@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,34 @@ import yaml
 BASE_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_APP_CONFIG_PATH = BASE_DIR / "config" / "app_config.yaml"
 logger = logging.getLogger(__name__)
+DEFAULT_ENV_PATH = BASE_DIR / ".env"
+
+
+def _load_local_env_file(env_path: Path = DEFAULT_ENV_PATH) -> None:
+    """
+    Load KEY=VALUE pairs from local .env file into process environment.
+
+    Existing environment variables are not overwritten.
+    This keeps secrets out of YAML files tracked in git.
+    """
+    if not env_path.exists():
+        return
+
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+
+        key, raw_value = line.split("=", 1)
+        key = key.strip()
+        if not key:
+            continue
+
+        value = raw_value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+            value = value[1:-1]
+
+        os.environ.setdefault(key, value)
 
 
 def _resolve_path(raw_value: str | None, default_path: Path) -> Path:
@@ -175,6 +204,7 @@ class Settings:
     @classmethod
     def from_yaml(cls) -> "Settings":
         """Build Settings from YAML config file only."""
+        _load_local_env_file()
         config_path = DEFAULT_APP_CONFIG_PATH
         config_data = _load_yaml_config(config_path)
 
@@ -222,7 +252,10 @@ class Settings:
                 _yaml_get(config_data, "telegram.enabled", False),
                 default=False,
             ),
-            telegram_bot_token=_parse_optional_string(_yaml_get(config_data, "telegram.bot_token")),
+            telegram_bot_token=_parse_optional_string(
+                os.getenv("TELEGRAM_BOT_TOKEN")
+            )
+            or _parse_optional_string(_yaml_get(config_data, "telegram.bot_token")),
             telegram_allowed_chat_ids=_parse_int_list(
                 _yaml_get(config_data, "telegram.allowed_chat_ids", [])
             ),

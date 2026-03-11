@@ -4,8 +4,8 @@
 
 ## עקרונות בסיס
 
-- כל ההגדרות מנוהלות רק דרך `config/app_config.yaml`.
-- המערכת לא משתמשת ב-`.env`.
+- רוב ההגדרות מנוהלות דרך `config/app_config.yaml`.
+- סודות (כמו טוקן טלגרם) מומלץ לשים ב-`.env` ולא ב-Git.
 - כל יום נשמר כ-snapshot נפרד.
 - רשימת האנשים נשמרת ב-master כדי שלא תצטרך להזין אותם מחדש כל יום.
 - בתחילת יום חדש נוצרת אוטומטית קובץ XLSX יומי חדש, שמעתיק מה-master את רשימת האנשים בלבד.
@@ -36,6 +36,7 @@
 ערוך:
 
 - `config/app_config.yaml`
+- `.env` (רק לסודות)
 
 ערכי ברירת מחדל מומלצים לפיתוח מקומי:
 
@@ -119,11 +120,16 @@ npm run dev
 ### `telegram` (אופציונלי)
 
 - `telegram.enabled` - הפעלה/כיבוי של הבוט.
-- `telegram.bot_token` - טוקן בוט.
+- `telegram.bot_token` - טוקן בוט כ-Fallback בלבד (מומלץ להשאיר ריק).
 - `telegram.allowed_chat_ids` - רשימת chat_id מורשים (`[]` = ללא הגבלה).
 - `telegram.allowed_remote_names` - רשימת שמות מורשים להזנה מרחוק.
 - `telegram.poll_timeout_seconds` - זמן polling מול Telegram.
 - `telegram.poll_retry_seconds` - השהיה בין ניסיונות אחרי כשל.
+
+עדיפות טעינת טוקן:
+
+- קודם `TELEGRAM_BOT_TOKEN` מתוך `.env`.
+- אם לא קיים, המערכת תנסה להשתמש ב-`telegram.bot_token` מתוך YAML.
 
 התנהגות `telegram.allowed_remote_names`:
 

@@ -4,7 +4,7 @@
 
 - `config/app_config.yaml`
 
-לא נדרש `.env`.
+בנוסף, לסודות מומלץ להשתמש ב-`.env` (למשל טוקן טלגרם).
 
 ## 1) דרישות
 
@@ -25,6 +25,10 @@
 - `frontend.api_base_url: ""`
 - `frontend.dev_server_port: 5173`
 - `frontend.dev_proxy_target: "http://localhost:8000"`
+
+לקובץ `.env` (אופציונלי אך מומלץ לטוקן):
+
+- `TELEGRAM_BOT_TOKEN=YOUR_TOKEN`
 
 ## 3) הרצת Backend (טרמינל 1)
 
@@ -58,8 +62,12 @@ npm run dev
 הפעל דרך `config/app_config.yaml`:
 
 - `telegram.enabled: true`
-- `telegram.bot_token: "YOUR_TOKEN"`
+- `telegram.bot_token: ""` (מומלץ להשאיר ריק)
 - `telegram.allowed_remote_names: []` (ריק = אין הגבלת שמות, כל שם יכול להירשם)
+
+שים את הטוקן ב-`.env`:
+
+- `TELEGRAM_BOT_TOKEN=YOUR_TOKEN`
 
 תהליך הזנה בבוט:
 

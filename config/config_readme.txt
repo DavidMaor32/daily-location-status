@@ -4,7 +4,7 @@
 מטרת הקובץ
 ----------
 הקובץ app_config.yaml מגדיר את כל ההגדרות של המערכת.
-המערכת עובדת במצב YAML בלבד (ללא קבצי .env).
+לסודות (כמו טוקן טלגרם) מומלץ להשתמש בקובץ .env.
 
 נתיב קובץ הקונפיגורציה:
   ./config/app_config.yaml
@@ -100,7 +100,8 @@ telegram.enabled
 - דוגמה: true
 
 telegram.bot_token
-- מה זה: טוקן בוט מ-BotFather.
+- מה זה: טוקן בוט מ-BotFather (Fallback).
+- המלצה: להשאיר ריק ב-YAML ולהגדיר ב-.env את TELEGRAM_BOT_TOKEN.
 - דוגמה: "123456:ABC-DEF..."
 
 telegram.allowed_chat_ids
