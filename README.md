@@ -1,14 +1,25 @@
 ﻿# מערכת ניהול סטטוס יומי ומיקום (FastAPI + React)
 
-מערכת אינטרנטית לניהול אנשים, מיקומים וסטטוס יומי, עם שמירת היסטוריה בקבצי Excel (`.xlsx`).
+מערכת אינטרנטית לניהול אנשים, מיקומים וסטטוס יומי, עם שמירת היסטוריה בקבצי Excel (`.xlsx`) והזנה עצמאית דרך האתר ובאופן אופציונלי דרך בוט טלגרם.
 
-## עיקרון קונפיגורציה
+## עקרונות בסיס
 
-כל ההגדרות מוגדרות רק בקובץ:
+- כל ההגדרות מנוהלות רק דרך `config/app_config.yaml`.
+- המערכת לא משתמשת ב-`.env`.
+- כל יום נשמר כ-snapshot נפרד.
+- רשימת האנשים נשמרת ב-master כדי שלא תצטרך להזין אותם מחדש כל יום.
 
-- `config/app_config.yaml`
+## מה המערכת יודעת לעשות
 
-המערכת לא משתמשת ב-`.env`.
+- ניהול טבלת אנשים יומית (מיקום + סטטוס יומי + הערות).
+- הוספה/עריכה/מחיקה של אנשים.
+- הוספת רשימת שמות התחלתית בבת אחת.
+- היסטוריה לפי תאריך + שחזור יום היסטורי ליום הנוכחי.
+- הורדת קובץ XLSX ליום בודד.
+- הורדת ZIP של כל קבצי XLSX בטווח תאריכים.
+- ניהול רשימת מיקומים (הוספה/מחיקה).
+- עבודה במצב `local`, `s3`, או `local_and_s3`.
+- בוט טלגרם אופציונלי להזנה עצמאית.
 
 ## דרישות
 
@@ -16,15 +27,15 @@
 - Node.js `18+`
 - npm
 
-## הרצה
+## התקנה והרצה
 
-### 1) הגדרות
+### 1) הגדרת קונפיגורציה
 
-ערוך את הקובץ:
+ערוך:
 
 - `config/app_config.yaml`
 
-שדות חשובים להפעלה מקומית:
+ערכי ברירת מחדל מומלצים לפיתוח מקומי:
 
 - `storage.mode: "local"`
 - `storage.local_storage_dir: "./local_storage"`
@@ -33,7 +44,7 @@
 - `frontend.dev_proxy_target: "http://localhost:8000"`
 - `frontend.dev_server_port: 5173`
 
-### 2) Backend
+### 2) הפעלת Backend
 
 ```powershell
 cd backend
@@ -47,7 +58,7 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 - `http://localhost:8000/api/health`
 
-### 3) Frontend
+### 3) הפעלת Frontend
 
 בטרמינל נוסף:
 
@@ -57,59 +68,98 @@ npm install
 npm run dev
 ```
 
-כניסה לאתר:
+כניסה למערכת:
 
 - `http://localhost:5173`
 
-## מצבי שמירה
+## כל אפשרויות הקונפיגורציה (`config/app_config.yaml`)
 
-- `local` - שמירה מקומית בלבד
-- `s3` - שמירה ל-S3 בלבד
-- `local_and_s3` - שמירה מקומית + שכפול ל-S3
+### `app`
 
-הגדרות S3 נמצאות תחת:
+- `app.name` - שם המערכת (לוגים/זיהוי שירות).
+- `app.environment` - סביבת ריצה (`development` / `production`).
 
-- `storage.s3.*`
-- `aws.*`
+### `cors`
 
-## בוט טלגרם (אופציונלי)
+- `cors.origins` - רשימת כתובות שמותר להן לגשת ל-API מהדפדפן.
 
-הגדרות תחת:
+### `frontend`
 
-- `telegram.enabled`
-- `telegram.bot_token`
-- `telegram.allowed_chat_ids`
-- `telegram.allowed_remote_names`
+- `frontend.api_base_url` - בסיס URL ל-API בצד Frontend.
+- `frontend.dev_server_port` - פורט של Vite.
+- `frontend.dev_proxy_target` - יעד פרוקסי ל-`/api` בזמן פיתוח.
 
-בבוט טלגרם סטטוס ההזנה האפשרי הוא:
+### `storage`
 
-- `תקין`
-- `לא תקין`
+- `storage.mode` - מצב שמירה: `local` / `s3` / `local_and_s3`.
+- `storage.local_storage_dir` - נתיב לשמירה מקומית של קבצי Excel.
+- `storage.seed_people_file` - קובץ CSV התחלתי ליצירת master בפעם הראשונה.
+
+#### `storage.s3`
+
+- `storage.s3.bucket_name` - שם הבאקט.
+- `storage.s3.snapshots_prefix` - תיקייה לוגית לקבצי snapshot יומיים.
+- `storage.s3.master_key` - מפתח קובץ master של אנשים ב-S3.
+- `storage.s3.locations_key` - מפתח קובץ master של מיקומים ב-S3.
+
+### `aws`
+
+- `aws.access_key_id`
+- `aws.secret_access_key`
+- `aws.session_token` (אופציונלי)
+- `aws.region`
+
+הערה: שדות `aws.*` ו-`storage.s3.*` נדרשים כשעובדים במצב `s3` או `local_and_s3`.
+
+### `telegram` (אופציונלי)
+
+- `telegram.enabled` - הפעלה/כיבוי של הבוט.
+- `telegram.bot_token` - טוקן בוט.
+- `telegram.allowed_chat_ids` - רשימת chat_id מורשים (`[]` = ללא הגבלה).
+- `telegram.allowed_remote_names` - רשימת שמות מורשים להזנה מרחוק.
+- `telegram.poll_timeout_seconds` - זמן polling מול Telegram.
+- `telegram.poll_retry_seconds` - השהיה בין ניסיונות אחרי כשל.
 
 התנהגות `telegram.allowed_remote_names`:
 
-- `[]` (ריק): אין הגבלת שמות, ניתן להקליד כל שם, ואם השם לא קיים הוא ייווצר אוטומטית.
-- רשימה מלאה: רק שמות מהרשימה יכולים לבצע הזנה.
+- `[]` (ריק): כל שם יכול להירשם.
+- רשימה מלאה: רק שמות שנמצאים ברשימה יורשו להזין.
 
-אם הבוט לא פעיל, האתר ממשיך לעבוד רגיל ועמודות הזנה עצמאית נשארות ריקות.
+## קבצי Excel במערכת
 
-## קבצי נתונים (Excel)
+### קבצים שנוצרים בזמן עבודה
 
 - `local_storage/master/people_master.xlsx`
 - `local_storage/master/locations.xlsx`
 - `local_storage/snapshots/YYYY-MM-DD.xlsx`
 
-סטטוס יומי אפשרי במערכת:
+### קובץ people_master לדוגמה
 
-- `תקין`
-- `לא תקין`
-- `לא הוזן` (ברירת מחדל לאדם חדש)
+נוסף לפרויקט קובץ דוגמה מוכן:
 
-רשימת שמות התחלתית:
+- `backend/data/people_master_example.xlsx`
 
-- ניתן להזין בבת אחת כמה שמות דרך האתר (שדה `רשימת שמות התחלתית`).
-- השמות נשמרים ב-`people_master.xlsx` (master list).
-- בכל יום חדש המערכת יוצרת snapshot מלא מתוך ה-master, כך שלא צריך להזין שוב את אותם אנשים.
+עמודות בקובץ:
+
+- `person_id`
+- `full_name`
+
+שימוש מומלץ:
+
+1. אם אתה רוצה להתחיל עם הקובץ הזה במצב מקומי, העתק אותו ל:
+   - `local_storage/master/people_master.xlsx`
+2. אם עובדים מול S3, העלה אותו ל-key שמוגדר ב:
+   - `storage.s3.master_key`
+
+## סטטוסים במערכת
+
+- סטטוס יומי (`daily_status`):
+  - `תקין`
+  - `לא תקין`
+  - `לא הוזן`
+- סטטוס הזנה עצמאית (`self_daily_status`):
+  - `תקין`
+  - `לא תקין`
 
 ## API מרכזי
 
@@ -143,27 +193,27 @@ npm run build
 
 ## תקלות נפוצות
 
-### Seed people file was not found
+### `Seed people file was not found`
 
-בדוק ב-`config/app_config.yaml`:
+בדוק שהנתיב בקונפיג תואם לקובץ קיים:
 
 - `storage.seed_people_file: "./backend/data/sample_people.csv"`
 
-### Frontend לא מתחבר ל-Backend
+### Frontend לא מצליח לדבר עם Backend
 
-בדוק ב-`config/app_config.yaml`:
+בדוק:
 
 - `frontend.api_base_url: ""`
 - `frontend.dev_proxy_target: "http://localhost:8000"`
 
-### שיניתי קונפיגורציה ולא השתנה
+### שיניתי קונפיגורציה ולא קרה שינוי
 
-אחרי שינוי `config/app_config.yaml` יש לבצע restart גם ל-Backend וגם ל-Frontend.
+צריך לבצע restart גם ל-Backend וגם ל-Frontend אחרי שינוי ב-`config/app_config.yaml`.
 
 ## העברה למחשב אחר
 
 1. מעתיקים את כל תיקיית הפרויקט.
-2. מעדכנים רק את `config/app_config.yaml` לפי המחשב החדש.
+2. מעדכנים את `config/app_config.yaml` לפי המחשב החדש.
 3. מתקינים תלות מחדש:
    - `pip install -r backend/requirements.txt`
    - `npm install` בתוך `frontend`
