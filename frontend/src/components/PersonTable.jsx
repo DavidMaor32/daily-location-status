@@ -28,15 +28,17 @@ function formatTimestamp(value) {
 
 // Return status quick-button classes with color + selected state.
 function getStatusQuickButtonClass(targetStatus, currentStatus) {
-  let toneClass = "btn-status-missing";
+  let activeClass = "";
   if (targetStatus === DAILY_STATUS_OK) {
-    toneClass = "btn-status-ok";
+    activeClass = "active-status-ok";
   } else if (targetStatus === DAILY_STATUS_BAD) {
-    toneClass = "btn-status-bad";
+    activeClass = "active-status-bad";
+  } else if (targetStatus === DAILY_STATUS_MISSING) {
+    activeClass = "active-status-missing";
   }
 
-  const selectedClass = targetStatus === currentStatus ? "active-status" : "";
-  return `btn btn-chip ${toneClass} ${selectedClass}`.trim();
+  const selectedClass = targetStatus === currentStatus ? activeClass : "";
+  return `btn btn-chip btn-status-choice ${selectedClass}`.trim();
 }
 
 // Render the main people table with quick actions for status/location updates.
@@ -150,7 +152,7 @@ function PersonTable({
                           })
                         }
                       >
-                        לא הוזן
+                        איפוס
                       </button>
                     </div>
                   ) : null}
