@@ -36,9 +36,9 @@ aws:
   region: "us-east-1" # אזור AWS לחיבור S3 | דוגמה: "us-east-1"
 
 telegram:
-  enabled: false # האם להפעיל בוט טלגרם | דוגמה: true
-  bot_token: "" # טוקן בוט מ-BotFather | דוגמה: "123456:ABC-DEF..."
+  enabled: true # האם להפעיל בוט טלגרם | דוגמה: true
+  bot_token: "8266263982:AAFz8x53Vrz3iCz-Mst_zhrk84qOPqj2HmU" # טוקן בוט מ-BotFather | דוגמה: "123456:ABC-DEF..."
   allowed_chat_ids: [] # רשימת chat_id מורשים (ריק = ללא הגבלה) | דוגמה: [123456789, 987654321]
-  allowed_remote_names: [] # רשימת שמות שמורשים להזנה מרחוק (ריק = כל השמות) | דוגמה: ["יוסי כהן", "מיכל לוי"]
+  allowed_remote_names: [] # רשימת שמות שמורשים להזנה מרחוק (ריק = אין הגבלה, כל שם יכול להירשם) | דוגמה: ["יוסי כהן", "מיכל לוי"]
   poll_timeout_seconds: 25 # timeout ל-polling ל-Telegram | דוגמה: 25
   poll_retry_seconds: 3 # השהייה בין ניסיונות אחרי שגיאה | דוגמה: 3

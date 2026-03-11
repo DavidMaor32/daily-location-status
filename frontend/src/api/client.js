@@ -126,6 +126,14 @@ export function addPerson(payload) {
   });
 }
 
+// Bulk-create initial people names (saved to master and today's snapshot).
+export function addInitialPeopleList(names) {
+  return apiRequest("/api/people/initialize-list", {
+    method: "POST",
+    body: JSON.stringify({ names }),
+  });
+}
+
 // Replace person data for today's snapshot row.
 export function replacePerson(personId, payload) {
   return apiRequest(`/api/people/${personId}`, {

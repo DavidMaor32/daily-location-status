@@ -81,6 +81,16 @@ npm run dev
 - `telegram.allowed_chat_ids`
 - `telegram.allowed_remote_names`
 
+בבוט טלגרם סטטוס ההזנה האפשרי הוא:
+
+- `תקין`
+- `לא תקין`
+
+התנהגות `telegram.allowed_remote_names`:
+
+- `[]` (ריק): אין הגבלת שמות, ניתן להקליד כל שם, ואם השם לא קיים הוא ייווצר אוטומטית.
+- רשימה מלאה: רק שמות מהרשימה יכולים לבצע הזנה.
+
 אם הבוט לא פעיל, האתר ממשיך לעבוד רגיל ועמודות הזנה עצמאית נשארות ריקות.
 
 ## קבצי נתונים (Excel)
@@ -88,6 +98,18 @@ npm run dev
 - `local_storage/master/people_master.xlsx`
 - `local_storage/master/locations.xlsx`
 - `local_storage/snapshots/YYYY-MM-DD.xlsx`
+
+סטטוס יומי אפשרי במערכת:
+
+- `תקין`
+- `לא תקין`
+- `לא הוזן` (ברירת מחדל לאדם חדש)
+
+רשימת שמות התחלתית:
+
+- ניתן להזין בבת אחת כמה שמות דרך האתר (שדה `רשימת שמות התחלתית`).
+- השמות נשמרים ב-`people_master.xlsx` (master list).
+- בכל יום חדש המערכת יוצרת snapshot מלא מתוך ה-master, כך שלא צריך להזין שוב את אותם אנשים.
 
 ## API מרכזי
 
@@ -101,6 +123,7 @@ npm run dev
 - `POST /api/locations`
 - `DELETE /api/locations/{location_name}`
 - `POST /api/people`
+- `POST /api/people/initialize-list`
 - `PATCH /api/people/{person_id}`
 - `PUT /api/people/{person_id}`
 - `DELETE /api/people/{person_id}`

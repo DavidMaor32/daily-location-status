@@ -12,6 +12,7 @@ BASE_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_APP_CONFIG_PATH = BASE_DIR / "config" / "app_config.yaml"
 logger = logging.getLogger(__name__)
 
+
 def _resolve_path(raw_value: str | None, default_path: Path) -> Path:
     """Resolve relative paths against project root for stable behavior."""
     candidate = Path(raw_value).expanduser() if raw_value else default_path
@@ -121,6 +122,22 @@ def _parse_origins(raw_value: Any) -> list[str]:
     return [origin.strip() for origin in str(raw_value).split(",") if origin.strip()]
 
 
+def _parse_string(raw_value: Any, default: str) -> str:
+    """Parse one required string with fallback when value is empty/null."""
+    if raw_value is None:
+        return default
+    cleaned = str(raw_value).strip()
+    return cleaned or default
+
+
+def _parse_optional_string(raw_value: Any) -> str | None:
+    """Parse one optional string and return None for empty/null values."""
+    if raw_value is None:
+        return None
+    cleaned = str(raw_value).strip()
+    return cleaned or None
+
+
 @dataclass
 class Settings:
     config_file_path: Path
@@ -157,23 +174,32 @@ class Settings:
 
         return cls(
             config_file_path=config_path,
-            app_name=str(_yaml_get(config_data, "app.name", "Daily Status Manager API")),
-            environment=str(_yaml_get(config_data, "app.environment", "development")),
-            storage_mode=str(_yaml_get(config_data, "storage.mode", "local")).lower(),
-            aws_access_key_id=_yaml_get(config_data, "aws.access_key_id"),
-            aws_secret_access_key=_yaml_get(config_data, "aws.secret_access_key"),
-            aws_session_token=_yaml_get(config_data, "aws.session_token"),
-            aws_region_name=str(_yaml_get(config_data, "aws.region", "us-east-1")),
-            s3_bucket_name=_yaml_get(config_data, "storage.s3.bucket_name"),
-            s3_snapshots_prefix=str(_yaml_get(config_data, "storage.s3.snapshots_prefix", "snapshots")),
-            s3_master_key=str(_yaml_get(config_data, "storage.s3.master_key", "master/people_master.xlsx")),
-            s3_locations_key=str(_yaml_get(config_data, "storage.s3.locations_key", "master/locations.xlsx")),
+            app_name=_parse_string(_yaml_get(config_data, "app.name"), "Daily Status Manager API"),
+            environment=_parse_string(_yaml_get(config_data, "app.environment"), "development"),
+            storage_mode=_parse_string(_yaml_get(config_data, "storage.mode"), "local").lower(),
+            aws_access_key_id=_parse_optional_string(_yaml_get(config_data, "aws.access_key_id")),
+            aws_secret_access_key=_parse_optional_string(_yaml_get(config_data, "aws.secret_access_key")),
+            aws_session_token=_parse_optional_string(_yaml_get(config_data, "aws.session_token")),
+            aws_region_name=_parse_string(_yaml_get(config_data, "aws.region"), "us-east-1"),
+            s3_bucket_name=_parse_optional_string(_yaml_get(config_data, "storage.s3.bucket_name")),
+            s3_snapshots_prefix=_parse_string(
+                _yaml_get(config_data, "storage.s3.snapshots_prefix"),
+                "snapshots",
+            ),
+            s3_master_key=_parse_string(
+                _yaml_get(config_data, "storage.s3.master_key"),
+                "master/people_master.xlsx",
+            ),
+            s3_locations_key=_parse_string(
+                _yaml_get(config_data, "storage.s3.locations_key"),
+                "master/locations.xlsx",
+            ),
             local_storage_dir=_resolve_path(
-                str(_yaml_get(config_data, "storage.local_storage_dir", "")),
+                _parse_optional_string(_yaml_get(config_data, "storage.local_storage_dir")),
                 BASE_DIR / "local_storage",
             ),
             seed_people_file=_resolve_path(
-                str(_yaml_get(config_data, "storage.seed_people_file", "")),
+                _parse_optional_string(_yaml_get(config_data, "storage.seed_people_file")),
                 BASE_DIR / "backend" / "data" / "sample_people.csv",
             ),
             cors_origins=cors_origins,
@@ -181,7 +207,7 @@ class Settings:
                 _yaml_get(config_data, "telegram.enabled", False),
                 default=False,
             ),
-            telegram_bot_token=_yaml_get(config_data, "telegram.bot_token"),
+            telegram_bot_token=_parse_optional_string(_yaml_get(config_data, "telegram.bot_token")),
             telegram_allowed_chat_ids=_parse_int_list(
                 _yaml_get(config_data, "telegram.allowed_chat_ids", [])
             ),

@@ -6,7 +6,8 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field, field_validator
 
 
-DailyStatusType = Literal["תקין", "לא תקין"]
+DailyStatusType = Literal["תקין", "לא תקין", "לא הוזן"]
+SelfReportStatusType = Literal["תקין", "לא תקין"]
 LOCATION_MAX_LENGTH = 80
 
 
@@ -15,7 +16,7 @@ class PersonBase(BaseModel):
 
     full_name: str = Field(..., min_length=2, max_length=120)
     location: str = Field(default="בבית", min_length=1, max_length=LOCATION_MAX_LENGTH)
-    daily_status: DailyStatusType = "תקין"
+    daily_status: DailyStatusType = "לא הוזן"
     notes: str = Field(default="", max_length=500)
 
     @field_validator("full_name")
@@ -54,7 +55,7 @@ class PersonUpdate(BaseModel):
     location: Optional[str] = Field(default=None, min_length=1, max_length=LOCATION_MAX_LENGTH)
     daily_status: Optional[DailyStatusType] = None
     self_location: Optional[str] = Field(default=None, min_length=1, max_length=LOCATION_MAX_LENGTH)
-    self_daily_status: Optional[DailyStatusType] = None
+    self_daily_status: Optional[SelfReportStatusType] = None
     notes: Optional[str] = Field(default=None, max_length=500)
 
     @field_validator("full_name")
@@ -107,7 +108,7 @@ class PersonRecord(BaseModel):
     location: str
     daily_status: DailyStatusType
     self_location: Optional[str] = None
-    self_daily_status: Optional[DailyStatusType] = None
+    self_daily_status: Optional[SelfReportStatusType] = None
     notes: str
     last_updated: str
     date: date
@@ -118,7 +119,7 @@ class SelfReportUpdate(BaseModel):
 
     person_lookup: str = Field(..., min_length=1, max_length=120)
     self_location: str = Field(..., min_length=1, max_length=LOCATION_MAX_LENGTH)
-    self_daily_status: DailyStatusType
+    self_daily_status: SelfReportStatusType
 
     @field_validator("person_lookup")
     @classmethod
@@ -183,3 +184,38 @@ class SystemStatusResponse(BaseModel):
     telegram_active: bool
     telegram_message: str
     telegram_last_error: Optional[str] = None
+
+
+class InitialPeopleListCreate(BaseModel):
+    """Payload for bulk creation of initial people names."""
+
+    names: list[str] = Field(default_factory=list)
+
+    @field_validator("names")
+    @classmethod
+    def normalize_names(cls, value: list[str]) -> list[str]:
+        """Trim names, remove empties, and keep unique values (case-insensitive)."""
+        unique_names: list[str] = []
+        seen: set[str] = set()
+        for raw_name in value:
+            cleaned_name = str(raw_name).strip()
+            if len(cleaned_name) < 2:
+                continue
+            name_key = cleaned_name.lower()
+            if name_key in seen:
+                continue
+            seen.add(name_key)
+            unique_names.append(cleaned_name)
+
+        if not unique_names:
+            raise ValueError("At least one valid full name is required")
+        return unique_names
+
+
+class InitialPeopleListResponse(BaseModel):
+    """Response summary for bulk initial people creation."""
+
+    created_count: int
+    skipped_count: int
+    created_names: list[str]
+    skipped_names: list[str]

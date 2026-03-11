@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import {
+  addInitialPeopleList,
   addPerson,
   createLocation,
   deleteLocation,
@@ -24,6 +25,11 @@ import {
   normalizeLocationName,
   uniqueLocations,
 } from "./constants/locations";
+import {
+  DAILY_STATUS_BAD,
+  DAILY_STATUS_MISSING,
+  DAILY_STATUS_OK,
+} from "./constants/statuses";
 
 const AUTO_REFRESH_MS = 5000;
 const DEFAULT_SYSTEM_STATUS = {
@@ -67,6 +73,7 @@ function App() {
   const [locationOptions, setLocationOptions] = useState(
     DEFAULT_LOCATION_OPTIONS
   );
+  const [initialPeopleInput, setInitialPeopleInput] = useState("");
   const [newLocationName, setNewLocationName] = useState("");
   const [locationToDelete, setLocationToDelete] = useState("");
   const [downloadFromDate, setDownloadFromDate] = useState(todayString);
@@ -353,6 +360,38 @@ function App() {
     }
   }
 
+  // Add a bulk initial names list to master and today's snapshot.
+  async function handleAddInitialPeopleList() {
+    const names = initialPeopleInput
+      .split(/\r?\n|,/)
+      .map((item) => item.trim())
+      .filter((item) => item.length >= 2);
+
+    if (names.length === 0) {
+      setError("יש להזין לפחות שם מלא אחד (לפחות 2 תווים)");
+      return;
+    }
+
+    setActionLoading(true);
+    setError("");
+
+    try {
+      const response = await addInitialPeopleList(names);
+      setInitialPeopleInput("");
+      await loadSelectedDate(todayString);
+
+      const createdCount = Number(response?.created_count || 0);
+      const skippedCount = Number(response?.skipped_count || 0);
+      window.alert(
+        `הרשימה נקלטה בהצלחה.\nנוספו: ${createdCount}\nדולגו (כבר קיימים): ${skippedCount}`
+      );
+    } catch (err) {
+      setError(err.message || "הוספת רשימת שמות התחלתית נכשלה");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
   // Open modal for creating a new person.
   function openAddModal() {
     setModalMode("add");
@@ -538,8 +577,9 @@ function App() {
             onChange={(event) => setStatusFilter(event.target.value)}
           >
             <option value="all">הכול</option>
-            <option value="תקין">תקין</option>
-            <option value="לא תקין">לא תקין</option>
+            <option value={DAILY_STATUS_OK}>תקין</option>
+            <option value={DAILY_STATUS_BAD}>לא תקין</option>
+            <option value={DAILY_STATUS_MISSING}>לא הוזן</option>
           </select>
         </div>
 
@@ -593,6 +633,25 @@ function App() {
               מחק מיקום
             </button>
           </div>
+        </div>
+
+        <div className="filter-group initial-people-group">
+          <label>רשימת שמות התחלתית</label>
+          <textarea
+            placeholder={"שם בכל שורה או מופרד בפסיקים\nלדוגמה:\nיוסי כהן\nדנה לוי"}
+            value={initialPeopleInput}
+            onChange={(event) => setInitialPeopleInput(event.target.value)}
+            disabled={isReadOnly || actionLoading}
+            rows={4}
+          />
+          <button
+            className="btn btn-secondary"
+            onClick={handleAddInitialPeopleList}
+            disabled={isReadOnly || actionLoading}
+            title={isReadOnly ? "ניתן לעדכן רשימת בסיס רק ביום הנוכחי" : ""}
+          >
+            הוסף רשימת שמות
+          </button>
         </div>
 
         <div className="filter-group download-range-group">

@@ -35,9 +35,10 @@ LOCATION_COLUMNS = ["location", "created_at"]
 LOCATION_ALIASES = {
     "ביחידה": "מיקום 1",
 }
-VALID_DAILY_STATUS = {"תקין", "לא תקין"}
+VALID_DAILY_STATUS = {"תקין", "לא תקין", "לא הוזן"}
+VALID_SELF_DAILY_STATUS = {"תקין", "לא תקין"}
 DEFAULT_LOCATION = "בבית"
-DEFAULT_DAILY_STATUS = "תקין"
+DEFAULT_DAILY_STATUS = "לא הוזן"
 DEFAULT_LOCATION_OPTIONS = ["בבית", "מיקום 1", "מיקום 2", "מיקום 3", "מיקום 4", "מיקום 5"]
 
 
@@ -194,6 +195,87 @@ class SnapshotService:
             self.save_locations(updated_df)
             return self.load_locations()["location"].tolist()
 
+    def add_initial_people_today(self, names: list[str]) -> dict:
+        """
+        Add missing people from one initial names list.
+
+        The method saves names to master list and inserts them into today's snapshot,
+        so future dates are automatically generated with the same people.
+        """
+        with self._write_lock:
+            normalized_names = self._normalize_initial_names(names)
+            if not normalized_names:
+                raise ValidationError("At least one valid full name is required")
+
+            master_df = self.load_master_people()
+            today = date.today()
+            snapshot_df = self.load_snapshot(today, create_if_missing=True)
+
+            existing_master_keys = {
+                self._normalize_name_key(item)
+                for item in master_df["full_name"].astype(str).tolist()
+            }
+            existing_ids = set(master_df["person_id"].astype(str).tolist())
+
+            created_names: list[str] = []
+            skipped_names: list[str] = []
+            new_master_rows: list[dict] = []
+            new_snapshot_rows: list[dict] = []
+            now_value = self._now_iso()
+
+            for full_name in normalized_names:
+                full_name_key = self._normalize_name_key(full_name)
+                if full_name_key in existing_master_keys:
+                    skipped_names.append(full_name)
+                    continue
+
+                person_id = self._generate_person_id(existing_ids)
+                existing_ids.add(person_id)
+                existing_master_keys.add(full_name_key)
+                created_names.append(full_name)
+
+                new_master_rows.append(
+                    {
+                        "person_id": person_id,
+                        "full_name": full_name,
+                    }
+                )
+                new_snapshot_rows.append(
+                    {
+                        "person_id": person_id,
+                        "full_name": full_name,
+                        "location": DEFAULT_LOCATION,
+                        "daily_status": DEFAULT_DAILY_STATUS,
+                        "self_location": "",
+                        "self_daily_status": "",
+                        "notes": "",
+                        "last_updated": now_value,
+                        "date": today.isoformat(),
+                    }
+                )
+
+            if new_master_rows:
+                master_df = pd.concat(
+                    [master_df, pd.DataFrame(new_master_rows, columns=MASTER_COLUMNS)],
+                    ignore_index=True,
+                )
+                self.save_master_people(master_df)
+
+            if new_snapshot_rows:
+                snapshot_df = pd.concat(
+                    [snapshot_df, pd.DataFrame(new_snapshot_rows, columns=SNAPSHOT_COLUMNS)],
+                    ignore_index=True,
+                )
+                snapshot_df = self._normalize_snapshot_df(snapshot_df, today)
+                self.save_snapshot(today, snapshot_df)
+
+            return {
+                "created_count": len(created_names),
+                "skipped_count": len(skipped_names),
+                "created_names": created_names,
+                "skipped_names": skipped_names,
+            }
+
     def add_person_today(self, payload: PersonCreate) -> dict:
         """Add a person to master list and today's snapshot."""
         with self._write_lock:
@@ -336,6 +418,7 @@ class SnapshotService:
                 source_df,
                 today,
                 carry_self_report_fields=True,
+                carry_daily_status_from_source=True,
             )
             self.save_snapshot(today, restored_df)
             logger.info("Restored snapshot from %s into %s", source_date.isoformat(), today.isoformat())
@@ -360,6 +443,7 @@ class SnapshotService:
                     previous_df,
                     snapshot_date,
                     carry_self_report_fields=False,
+                    carry_daily_status_from_source=False,
                 )
             else:
                 # Fallback for first run: create from master list defaults.
@@ -369,6 +453,7 @@ class SnapshotService:
                     None,
                     snapshot_date,
                     carry_self_report_fields=False,
+                    carry_daily_status_from_source=False,
                 )
 
             self.save_snapshot(snapshot_date, new_snapshot)
@@ -465,11 +550,14 @@ class SnapshotService:
         source_df: pd.DataFrame | None,
         snapshot_date: date,
         carry_self_report_fields: bool,
+        carry_daily_status_from_source: bool,
     ) -> pd.DataFrame:
         """
         Create a full-day snapshot from master list and optional source snapshot.
 
         carry_self_report_fields controls whether self-reported columns are copied from source.
+        carry_daily_status_from_source controls whether daily_status is copied from source.
+        When False, daily_status is reset to default ("לא הוזן") for the new day.
         """
         source_by_id = {}
         if source_df is not None and not source_df.empty:
@@ -490,7 +578,11 @@ class SnapshotService:
                     "person_id": person_id,
                     "full_name": str(person["full_name"]).strip(),
                     "location": self._normalize_location(source_row["location"] if source_row is not None else None),
-                    "daily_status": self._normalize_daily_status(source_row["daily_status"] if source_row is not None else None),
+                    "daily_status": self._normalize_daily_status(
+                        source_row["daily_status"]
+                        if (carry_daily_status_from_source and source_row is not None)
+                        else DEFAULT_DAILY_STATUS
+                    ),
                     # Self-report fields are reset for a new day unless explicitly restored from history.
                     "self_location": self._normalize_self_location(
                         source_row["self_location"]
@@ -594,6 +686,25 @@ class SnapshotService:
 
         return normalized_ids
 
+    def _normalize_initial_names(self, names: list[str]) -> list[str]:
+        """Normalize bulk names list, remove invalid/duplicate values, and preserve order."""
+        normalized_names: list[str] = []
+        seen: set[str] = set()
+        for raw_name in names:
+            cleaned_name = str(raw_name).strip()
+            if len(cleaned_name) < 2:
+                continue
+            name_key = self._normalize_name_key(cleaned_name)
+            if name_key in seen:
+                continue
+            seen.add(name_key)
+            normalized_names.append(cleaned_name)
+        return normalized_names
+
+    def _normalize_name_key(self, name: object) -> str:
+        """Normalize full-name text for case-insensitive comparisons."""
+        return str(name).strip().lower()
+
     def _generate_person_id(self, used_ids: set[str]) -> str:
         """Generate a unique person identifier."""
         while True:
@@ -681,12 +792,12 @@ class SnapshotService:
     def _normalize_self_daily_status(self, value: object) -> str:
         """Normalize self-reported status while allowing empty value."""
         cleaned = str(value).strip() if value is not None else ""
-        return cleaned if cleaned in VALID_DAILY_STATUS else ""
+        return cleaned if cleaned in VALID_SELF_DAILY_STATUS else ""
 
     def _normalize_required_daily_status(self, value: object) -> str:
         """Strictly validate required status value for self-report flows."""
         cleaned = str(value).strip() if value is not None else ""
-        if cleaned not in VALID_DAILY_STATUS:
+        if cleaned not in VALID_SELF_DAILY_STATUS:
             raise ValidationError("daily_status must be either 'תקין' or 'לא תקין'")
         return cleaned
 

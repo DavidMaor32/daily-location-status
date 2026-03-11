@@ -1,9 +1,14 @@
 import { useEffect, useState } from "react";
+import {
+  DAILY_STATUS_BAD,
+  DAILY_STATUS_MISSING,
+  DAILY_STATUS_OK,
+} from "../constants/statuses";
 
 const defaultForm = {
   full_name: "",
   location: "בבית",
-  daily_status: "תקין",
+  daily_status: DAILY_STATUS_MISSING,
   notes: "",
 };
 
@@ -30,7 +35,7 @@ function PersonFormModal({
       setForm({
         full_name: initialData.full_name || "",
         location: initialData.location || "בבית",
-        daily_status: initialData.daily_status || "תקין",
+        daily_status: initialData.daily_status || DAILY_STATUS_MISSING,
         notes: initialData.notes || "",
       });
       return;
@@ -97,8 +102,9 @@ function PersonFormModal({
                 setForm((prev) => ({ ...prev, daily_status: event.target.value }))
               }
             >
-              <option value="תקין">תקין</option>
-              <option value="לא תקין">לא תקין</option>
+              <option value={DAILY_STATUS_OK}>תקין</option>
+              <option value={DAILY_STATUS_BAD}>לא תקין</option>
+              <option value={DAILY_STATUS_MISSING}>לא הוזן</option>
             </select>
           </label>
 

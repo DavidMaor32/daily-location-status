@@ -26,6 +26,8 @@
   --ok-text: #1f6d30;
   --bad-bg: #f8d7d9;
   --bad-text: #8a1f2a;
+  --missing-bg: #edf2f7;
+  --missing-text: #475569;
   --error-bg: #ffe5e6;
   --error-text: #8a2127;
 }
@@ -117,6 +119,15 @@ body {
 
 .location-add-group {
   min-width: 250px;
+}
+
+.initial-people-group {
+  min-width: 280px;
+}
+
+.initial-people-group textarea {
+  resize: vertical;
+  min-height: 90px;
 }
 
 .location-add-row {
@@ -343,6 +354,11 @@ textarea {
 .chip-status-bad {
   background: var(--bad-bg);
   color: var(--bad-text);
+}
+
+.chip-status-missing {
+  background: var(--missing-bg);
+  color: var(--missing-text);
 }
 
 .quick-actions {

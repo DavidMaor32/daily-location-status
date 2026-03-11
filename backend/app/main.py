@@ -14,6 +14,8 @@ from app.config import Settings
 from app.exceptions import AppError, NotFoundError, StorageError, ValidationError
 from app.models import (
     AvailableDatesResponse,
+    InitialPeopleListCreate,
+    InitialPeopleListResponse,
     LocationCreate,
     LocationListResponse,
     PersonCreate,
@@ -232,6 +234,15 @@ def remove_location(
 def create_person(payload: PersonCreate, service: SnapshotService = Depends(service_dep)) -> PersonRecord:
     """Create a person in master list and insert into today's snapshot."""
     return PersonRecord(**service.add_person_today(payload))
+
+
+@app.post("/api/people/initialize-list", response_model=InitialPeopleListResponse)
+def create_initial_people_list(
+    payload: InitialPeopleListCreate,
+    service: SnapshotService = Depends(service_dep),
+) -> InitialPeopleListResponse:
+    """Bulk-create initial names in master list and today's snapshot."""
+    return InitialPeopleListResponse(**service.add_initial_people_today(payload.names))
 
 
 @app.patch("/api/people/{person_id}", response_model=PersonRecord)

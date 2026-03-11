@@ -1,4 +1,10 @@
 import { getLocationChipClass } from "../constants/locations";
+import {
+  DAILY_STATUS_BAD,
+  DAILY_STATUS_MISSING,
+  DAILY_STATUS_OK,
+  getDailyStatusChipClass,
+} from "../constants/statuses";
 
 // Convert backend ISO timestamp into friendly Hebrew date-time.
 function formatTimestamp(value) {
@@ -87,13 +93,7 @@ function PersonTable({
                   ) : null}
                 </td>
                 <td>
-                  <span
-                    className={`status-chip ${
-                      person.daily_status === "תקין"
-                        ? "chip-status-ok"
-                        : "chip-status-bad"
-                    }`}
-                  >
+                  <span className={`status-chip ${getDailyStatusChipClass(person.daily_status)}`}>
                     {person.daily_status}
                   </span>
                   {!readOnly ? (
@@ -101,7 +101,9 @@ function PersonTable({
                       <button
                         className="btn btn-chip"
                         onClick={() =>
-                          onQuickUpdate(person.person_id, { daily_status: "תקין" })
+                          onQuickUpdate(person.person_id, {
+                            daily_status: DAILY_STATUS_OK,
+                          })
                         }
                       >
                         תקין
@@ -110,11 +112,21 @@ function PersonTable({
                         className="btn btn-chip"
                         onClick={() =>
                           onQuickUpdate(person.person_id, {
-                            daily_status: "לא תקין",
+                            daily_status: DAILY_STATUS_BAD,
                           })
                         }
                       >
                         לא תקין
+                      </button>
+                      <button
+                        className="btn btn-chip"
+                        onClick={() =>
+                          onQuickUpdate(person.person_id, {
+                            daily_status: DAILY_STATUS_MISSING,
+                          })
+                        }
+                      >
+                        לא הוזן
                       </button>
                     </div>
                   ) : null}
@@ -130,13 +142,7 @@ function PersonTable({
                 </td>
                 <td>
                   {person.self_daily_status ? (
-                    <span
-                      className={`status-chip ${
-                        person.self_daily_status === "תקין"
-                          ? "chip-status-ok"
-                          : "chip-status-bad"
-                      }`}
-                    >
+                    <span className={`status-chip ${getDailyStatusChipClass(person.self_daily_status)}`}>
                       {person.self_daily_status}
                     </span>
                   ) : (

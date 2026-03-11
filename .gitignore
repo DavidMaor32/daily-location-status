@@ -1,7 +1,9 @@
 ﻿# Python
 __pycache__/
 *.pyc
+.venv/
 backend/.venv/
+.vincent/
 
 # Node
 frontend/node_modules/

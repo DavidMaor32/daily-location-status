@@ -8,7 +8,8 @@ from urllib.error import URLError
 from urllib.request import Request, urlopen
 
 from app.config import Settings
-from app.exceptions import AppError, ValidationError
+from app.exceptions import AppError, NotFoundError, ValidationError
+from app.models import PersonCreate
 from app.services.snapshot_service import SnapshotService
 
 
@@ -18,6 +19,7 @@ STATE_WAITING_NAME = "waiting_name"
 STATE_WAITING_LOCATION = "waiting_location"
 STATE_WAITING_STATUS = "waiting_status"
 STATUS_OPTIONS = ("תקין", "לא תקין")
+RESTART_HINT = "אפשר לנסות שוב באותו שלב, או לשלוח /start להתחלה מחדש."
 
 
 class TelegramBotService:
@@ -34,11 +36,18 @@ class TelegramBotService:
         self._offset = 0
         self._bot_token = (settings.telegram_bot_token or "").strip()
         self._allowed_chat_ids = set(settings.telegram_allowed_chat_ids)
-        self._allowed_remote_name_keys = {
-            self._normalize_key(name)
-            for name in settings.telegram_allowed_remote_names
-            if name.strip()
-        }
+        # Keep both ordered display names and normalized lookup keys for whitelist mode.
+        raw_allowed_names = [
+            name.strip() for name in settings.telegram_allowed_remote_names if name.strip()
+        ]
+        self._allowed_remote_names: list[str] = []
+        self._allowed_remote_name_keys: set[str] = set()
+        for name in raw_allowed_names:
+            normalized_name = self._normalize_key(name)
+            if normalized_name in self._allowed_remote_name_keys:
+                continue
+            self._allowed_remote_names.append(name)
+            self._allowed_remote_name_keys.add(normalized_name)
         self._healthy = False
         self._last_error: str | None = None
         self._conversation_by_chat: dict[int, dict] = {}
@@ -147,38 +156,7 @@ class TelegramBotService:
             self._send_message(chat_id, "הצ'אט הזה לא מורשה לעדכן סטטוס.")
             return
 
-        if text.startswith("/cancel"):
-            self._clear_conversation(chat_id)
-            self._send_message(
-                chat_id,
-                "תהליך ההזנה בוטל. להתחלה מחדש שלח /start",
-                reply_markup=self._remove_keyboard_markup(),
-            )
-            return
-
-        if text.startswith("/start"):
-            self._start_conversation(chat_id)
-            return
-
-        if text.startswith("/help"):
-            self._send_message(chat_id, self._help_text())
-            return
-
-        if text.startswith("/locations"):
-            locations = self.snapshot_service.get_locations()
-            self._send_message(chat_id, "מיקומים זמינים:\n" + "\n".join(f"- {item}" for item in locations))
-            return
-
-        if text.startswith("/chatid"):
-            self._send_message(chat_id, f"chat_id שלך: {chat_id}")
-            return
-
-        if text.startswith("/status"):
-            payload_text = text.removeprefix("/status").strip()
-            if payload_text:
-                self._handle_direct_status_update(chat_id, payload_text)
-            else:
-                self._start_conversation(chat_id)
+        if self._handle_command(chat_id, text):
             return
 
         conversation = self._get_conversation(chat_id)
@@ -186,11 +164,54 @@ class TelegramBotService:
             self._continue_conversation(chat_id, text, conversation)
             return
 
+        # If message starts with "/" and wasn't matched as a known command, do not treat it as status payload.
+        if text.startswith("/"):
+            self._send_message(chat_id, "פקודה לא מוכרת. שלח /help לרשימת פקודות.")
+            return
+
         if "|" in text:
             self._handle_direct_status_update(chat_id, text)
             return
 
         self._send_message(chat_id, "כדי להתחיל הזנה שלח /start")
+
+    def _handle_command(self, chat_id: int, text: str) -> bool:
+        """Handle known bot commands. Returns True when command was handled."""
+        if self._is_command(text, "/cancel"):
+            self._clear_conversation(chat_id)
+            self._send_message(
+                chat_id,
+                "תהליך ההזנה בוטל. להתחלה מחדש שלח /start",
+                reply_markup=self._remove_keyboard_markup(),
+            )
+            return True
+
+        if self._is_command(text, "/start"):
+            self._start_conversation(chat_id)
+            return True
+
+        if self._is_command(text, "/help"):
+            self._send_message(chat_id, self._help_text())
+            return True
+
+        if self._is_command(text, "/locations"):
+            locations = self.snapshot_service.get_locations()
+            self._send_message(chat_id, "מיקומים זמינים:\n" + "\n".join(f"- {item}" for item in locations))
+            return True
+
+        if self._is_command(text, "/chatid"):
+            self._send_message(chat_id, f"chat_id שלך: {chat_id}")
+            return True
+
+        if self._is_command(text, "/status"):
+            payload_text = text[len("/status") :].strip()
+            if payload_text:
+                self._handle_direct_status_update(chat_id, payload_text)
+            else:
+                self._start_conversation(chat_id)
+            return True
+
+        return False
 
     def _start_conversation(self, chat_id: int) -> None:
         """Start guided 3-step flow: name -> location -> status."""
@@ -200,7 +221,8 @@ class TelegramBotService:
             self._send_message(chat_id, f"ההזנה לא נקלטה בהצלחה: {exc}")
             return
 
-        if not person_options:
+        # When whitelist is configured, at least one allowed person must be available.
+        if self._allowed_remote_name_keys and not person_options:
             self._send_message(
                 chat_id,
                 "אין כרגע שמות זמינים להזנה מרחוק.",
@@ -215,10 +237,45 @@ class TelegramBotService:
                 "person_options": person_options,
             },
         )
+        self._prompt_name_step(chat_id, person_options)
+
+    def _prompt_name_step(self, chat_id: int, person_options: list[dict]) -> None:
+        """Send prompt for name step, with behavior based on whitelist mode."""
+        if self._allowed_remote_name_keys:
+            self._send_message(
+                chat_id,
+                "שלב 1/3: מה השם של הבן אדם?",
+                reply_markup=self._build_keyboard([item["label"] for item in person_options]),
+            )
+            return
+
+        keyboard = (
+            self._build_keyboard([item["label"] for item in person_options])
+            if person_options
+            else self._remove_keyboard_markup()
+        )
         self._send_message(
             chat_id,
-            "שלב 1/3: מה השם של הבן אדם?",
-            reply_markup=self._build_keyboard([item["label"] for item in person_options]),
+            "שלב 1/3: מה השם של הבן אדם? (אפשר להקליד כל שם מלא)",
+            reply_markup=keyboard,
+        )
+
+    def _prompt_location_step(self, chat_id: int, locations: list[str]) -> None:
+        """Send prompt for location step."""
+        location_lines = "\n".join(f"- {item}" for item in locations)
+        self._send_message(
+            chat_id,
+            "שלב 2/3: מה המיקום מתוך רשימת המיקומים?\n"
+            f"רשימת מיקומים אפשריים:\n{location_lines}",
+            reply_markup=self._build_keyboard(locations),
+        )
+
+    def _prompt_status_step(self, chat_id: int) -> None:
+        """Send prompt for daily status step."""
+        self._send_message(
+            chat_id,
+            "שלב 3/3: מה סטטוס ההזנה? תקין או לא תקין",
+            reply_markup=self._build_keyboard(list(STATUS_OPTIONS), row_size=2),
         )
 
     def _continue_conversation(self, chat_id: int, text: str, conversation: dict) -> None:
@@ -245,14 +302,39 @@ class TelegramBotService:
         person_options = conversation.get("person_options", [])
         selected = self._match_person_option(text, person_options)
         if not selected:
-            self._send_message(
+            if self._allowed_remote_name_keys:
+                self._send_step_validation_error(
+                    chat_id,
+                    "השם לא נמצא ברשימה המורשית. בחר/י שם מהרשימה.",
+                    reply_markup=self._build_keyboard([item["label"] for item in person_options]),
+                )
+                return
+
+            typed_name = text.strip()
+            if len(typed_name) < 2:
+                self._send_step_validation_error(
+                    chat_id,
+                    "יש להקליד שם מלא (לפחות 2 תווים).",
+                    reply_markup=self._remove_keyboard_markup(),
+                )
+                return
+
+            selected = {
+                "label": typed_name,
+                "full_name": typed_name,
+                # In open mode, lookup starts with full_name; if missing, we auto-register later.
+                "person_lookup": typed_name,
+            }
+
+        locations = self.snapshot_service.get_locations()
+        if not locations:
+            self._send_step_validation_error(
                 chat_id,
-                "השם לא נמצא ברשימה המורשית. בחר/י שם מהרשימה.",
-                reply_markup=self._build_keyboard([item["label"] for item in person_options]),
+                "לא נמצאו מיקומים זמינים במערכת.",
+                reply_markup=self._remove_keyboard_markup(),
             )
             return
 
-        locations = self.snapshot_service.get_locations()
         self._set_conversation(
             chat_id,
             {
@@ -262,18 +344,14 @@ class TelegramBotService:
                 "locations": locations,
             },
         )
-        self._send_message(
-            chat_id,
-            "שלב 2/3: מה המיקום מתוך רשימת המיקומים?",
-            reply_markup=self._build_keyboard(locations),
-        )
+        self._prompt_location_step(chat_id, locations)
 
     def _handle_waiting_location(self, chat_id: int, text: str, conversation: dict) -> None:
         """Validate location and move flow to status step."""
         locations = [str(item).strip() for item in conversation.get("locations", []) if str(item).strip()]
         selected_location = self._match_text_option(text, locations)
         if not selected_location:
-            self._send_message(
+            self._send_step_validation_error(
                 chat_id,
                 "המיקום לא נמצא ברשימת המיקומים. בחר/י מיקום מהרשימה.",
                 reply_markup=self._build_keyboard(locations),
@@ -289,17 +367,13 @@ class TelegramBotService:
                 "selected_location": selected_location,
             },
         )
-        self._send_message(
-            chat_id,
-            "שלב 3/3: מה סטטוס ההזנה? תקין או לא תקין",
-            reply_markup=self._build_keyboard(list(STATUS_OPTIONS), row_size=2),
-        )
+        self._prompt_status_step(chat_id)
 
     def _handle_waiting_status(self, chat_id: int, text: str, conversation: dict) -> None:
         """Validate status and persist final self-report update."""
         selected_status = self._match_text_option(text, list(STATUS_OPTIONS))
         if not selected_status:
-            self._send_message(
+            self._send_step_validation_error(
                 chat_id,
                 "הסטטוס חייב להיות: תקין או לא תקין.",
                 reply_markup=self._build_keyboard(list(STATUS_OPTIONS), row_size=2),
@@ -311,96 +385,203 @@ class TelegramBotService:
         selected_location = str(conversation.get("selected_location") or "").strip()
 
         try:
-            updated_person = self.snapshot_service.update_self_report_today(
+            updated_person, created_new_person = self._submit_status_update(
                 person_lookup=person_lookup,
+                person_name=person_name,
                 self_location=selected_location,
                 self_daily_status=selected_status,
             )
+        except NotFoundError:
+            # In whitelist mode, selected person can disappear between steps (race/delete).
             self._send_message(
                 chat_id,
-                "ההזנה נקלטה בהצלחה.\n"
-                f"שם: {person_name or updated_person.get('full_name', '-') }\n"
-                f"מיקום: {updated_person.get('self_location') or '-'}\n"
-                f"סטטוס: {updated_person.get('self_daily_status') or '-'}",
+                "האדם שנבחר לא נמצא כרגע במערכת. חוזרים לשלב בחירת שם.",
                 reply_markup=self._remove_keyboard_markup(),
             )
+            self._start_conversation(chat_id)
+            return
         except AppError as exc:
-            self._send_message(
+            self._send_step_validation_error(
                 chat_id,
                 f"ההזנה לא נקלטה בהצלחה: {exc}",
-                reply_markup=self._remove_keyboard_markup(),
+                reply_markup=self._build_keyboard(list(STATUS_OPTIONS), row_size=2),
             )
+            return
         except Exception as exc:  # noqa: BLE001
             logger.exception("Unexpected Telegram conversation error: %s", exc)
-            self._send_message(
+            self._send_step_validation_error(
                 chat_id,
-                "ההזנה לא נקלטה בהצלחה עקב שגיאה בלתי צפויה.",
-                reply_markup=self._remove_keyboard_markup(),
+                "אירעה שגיאה בלתי צפויה. נסה/י שוב.",
+                reply_markup=self._build_keyboard(list(STATUS_OPTIONS), row_size=2),
             )
-        finally:
-            self._clear_conversation(chat_id)
+            return
 
-    def _handle_direct_status_update(self, chat_id: int, payload_text: str) -> None:
-        """Backward-compatible direct update in format: person|location|status."""
+        success_prefix = (
+            "ההזנה נקלטה בהצלחה (נוצר אדם חדש במערכת)."
+            if created_new_person
+            else "ההזנה נקלטה בהצלחה."
+        )
+        self._send_message(
+            chat_id,
+            f"{success_prefix}\n"
+            f"שם: {person_name or updated_person.get('full_name', '-') }\n"
+            f"מיקום: {updated_person.get('self_location') or '-'}\n"
+            f"סטטוס: {updated_person.get('self_daily_status') or '-'}",
+            reply_markup=self._remove_keyboard_markup(),
+        )
+        self._clear_conversation(chat_id)
+
+    def _submit_status_update(
+        self,
+        person_lookup: str,
+        person_name: str,
+        self_location: str,
+        self_daily_status: str,
+    ) -> tuple[dict, bool]:
+        """
+        Apply self-report update.
+
+        Returns tuple: (updated_person_record, created_new_person_flag)
+        """
         try:
-            person_lookup, self_location, self_daily_status = self._parse_status_payload(payload_text)
             updated_person = self.snapshot_service.update_self_report_today(
                 person_lookup=person_lookup,
                 self_location=self_location,
                 self_daily_status=self_daily_status,
             )
+            return updated_person, False
+        except NotFoundError:
+            registration_name = (person_name or person_lookup).strip()
+            if len(registration_name) < 2:
+                raise ValidationError("שם לא תקין לרישום.")
+
+            # Whitelist mode: allow auto-registration only for explicit allowed names.
+            if (
+                self._allowed_remote_name_keys
+                and self._normalize_key(registration_name) not in self._allowed_remote_name_keys
+            ):
+                raise ValidationError("השם לא מורשה להזנה מרחוק.")
+
+            # Open mode: any typed name is allowed. Whitelist mode: only configured names are allowed.
+            created_person = self.snapshot_service.add_person_today(
+                PersonCreate(
+                    full_name=registration_name,
+                    location=self_location,
+                    # New registrations start as \"not entered\" for daily_status.
+                    daily_status="לא הוזן",
+                    notes="נרשם דרך בוט טלגרם",
+                )
+            )
+            updated_person = self.snapshot_service.update_self_report_today(
+                person_lookup=str(created_person["person_id"]),
+                self_location=self_location,
+                self_daily_status=self_daily_status,
+            )
+            return updated_person, True
+
+    def _handle_direct_status_update(self, chat_id: int, payload_text: str) -> None:
+        """Backward-compatible direct update in format: person|location|status."""
+        try:
+            person_lookup, self_location, self_daily_status = self._parse_status_payload(payload_text)
+            self._ensure_lookup_allowed_for_remote_input(person_lookup)
+            updated_person, created_new_person = self._submit_status_update(
+                person_lookup=person_lookup,
+                person_name=person_lookup,
+                self_location=self_location,
+                self_daily_status=self_daily_status,
+            )
+            success_prefix = (
+                "ההזנה נקלטה בהצלחה (נוצר אדם חדש במערכת)."
+                if created_new_person
+                else "ההזנה נקלטה בהצלחה."
+            )
             self._send_message(
                 chat_id,
-                "ההזנה נקלטה בהצלחה.\n"
+                f"{success_prefix}\n"
                 f"שם: {updated_person['full_name']}\n"
                 f"מיקום: {updated_person.get('self_location') or '-'}\n"
                 f"סטטוס: {updated_person.get('self_daily_status') or '-'}",
             )
         except AppError as exc:
-            self._send_message(chat_id, f"ההזנה לא נקלטה בהצלחה: {exc}")
+            self._send_message(chat_id, f"ההזנה לא נקלטה בהצלחה: {exc}\n{RESTART_HINT}")
         except Exception as exc:  # noqa: BLE001
             logger.exception("Unexpected Telegram command error: %s", exc)
-            self._send_message(chat_id, "ההזנה לא נקלטה בהצלחה עקב שגיאה בלתי צפויה.")
+            self._send_message(chat_id, f"ההזנה לא נקלטה בהצלחה עקב שגיאה בלתי צפויה.\n{RESTART_HINT}")
 
     def _build_person_options_for_remote_input(self) -> list[dict]:
         """Build selectable person list for remote input flow (with optional whitelist)."""
         snapshot_payload = self.snapshot_service.get_today_snapshot()
         people = snapshot_payload.get("people", [])
 
+        # Whitelist mode: show configured names even if the person does not exist yet.
+        if self._allowed_remote_name_keys:
+            people_by_name_key: dict[str, list[dict]] = {}
+            for person in people:
+                full_name = str(person.get("full_name") or "").strip()
+                person_id = str(person.get("person_id") or "").strip()
+                if not full_name:
+                    continue
+                normalized_name = self._normalize_key(full_name)
+                if normalized_name not in self._allowed_remote_name_keys:
+                    continue
+                people_by_name_key.setdefault(normalized_name, []).append(
+                    {"full_name": full_name, "person_id": person_id}
+                )
+
+            options: list[dict] = []
+            for allowed_name in self._allowed_remote_names:
+                allowed_name_key = self._normalize_key(allowed_name)
+                matches = sorted(
+                    people_by_name_key.get(allowed_name_key, []),
+                    key=lambda item: item["person_id"],
+                )
+
+                # Existing person rows use person_id lookup. Missing rows stay as name lookup
+                # so _submit_status_update can auto-create from the allowed list.
+                if matches:
+                    duplicated = len(matches) > 1
+                    for match in matches:
+                        label = (
+                            f"{match['full_name']} ({match['person_id']})"
+                            if duplicated and match["person_id"]
+                            else match["full_name"]
+                        )
+                        options.append(
+                            {
+                                "label": label,
+                                "full_name": match["full_name"],
+                                "person_lookup": match["person_id"] or match["full_name"],
+                            }
+                        )
+                else:
+                    options.append(
+                        {
+                            "label": allowed_name,
+                            "full_name": allowed_name,
+                            "person_lookup": allowed_name,
+                        }
+                    )
+            return options
+
+        # Open mode: all people from snapshot are selectable.
         candidate_people: list[dict] = []
         for person in people:
             full_name = str(person.get("full_name") or "").strip()
             person_id = str(person.get("person_id") or "").strip()
             if not full_name or not person_id:
                 continue
-
-            if self._allowed_remote_name_keys and self._normalize_key(full_name) not in self._allowed_remote_name_keys:
-                continue
-
-            candidate_people.append(
-                {
-                    "person_id": person_id,
-                    "full_name": full_name,
-                }
-            )
+            candidate_people.append({"person_id": person_id, "full_name": full_name})
 
         if not candidate_people:
             return []
 
-        candidate_people = sorted(
-            candidate_people,
-            key=lambda item: (item["full_name"], item["person_id"]),
-        )
-
+        candidate_people = sorted(candidate_people, key=lambda item: (item["full_name"], item["person_id"]))
         name_counts = Counter(item["full_name"] for item in candidate_people)
+
         options: list[dict] = []
         for item in candidate_people:
             duplicated_name = name_counts[item["full_name"]] > 1
-            label = (
-                f"{item['full_name']} ({item['person_id']})"
-                if duplicated_name
-                else item["full_name"]
-            )
+            label = f"{item['full_name']} ({item['person_id']})" if duplicated_name else item["full_name"]
             options.append(
                 {
                     "label": label,
@@ -409,6 +590,36 @@ class TelegramBotService:
                 }
             )
         return options
+
+    def _ensure_lookup_allowed_for_remote_input(self, person_lookup: str) -> None:
+        """Validate direct lookup against whitelist policy when whitelist is enabled."""
+        if not self._allowed_remote_name_keys:
+            return
+
+        lookup_key = self._normalize_key(person_lookup)
+        if not lookup_key:
+            raise ValidationError("person_lookup cannot be empty")
+
+        # If caller sends a whitelisted name directly, allow (even if person is not yet created).
+        if lookup_key in self._allowed_remote_name_keys:
+            return
+
+        snapshot_payload = self.snapshot_service.get_today_snapshot()
+        people = snapshot_payload.get("people", [])
+
+        for person in people:
+            full_name = str(person.get("full_name") or "").strip()
+            person_id = str(person.get("person_id") or "").strip()
+            full_name_key = self._normalize_key(full_name)
+            if not full_name_key or not person_id:
+                continue
+
+            if lookup_key == self._normalize_key(person_id) or lookup_key == full_name_key:
+                if full_name_key in self._allowed_remote_name_keys:
+                    return
+                raise ValidationError("השם לא מורשה להזנה מרחוק.")
+
+        raise ValidationError("השם לא נמצא ברשימה המורשית.")
 
     def _match_person_option(self, user_input: str, person_options: list[dict]) -> dict | None:
         """Match user text to a person option label (or unique name)."""
@@ -459,6 +670,14 @@ class TelegramBotService:
             "/chatid - הצגת chat id\n\n"
             "אפשר גם הזנה ישירה:\n"
             "/status person_id_או_שם_מלא | מיקום | תקין/לא תקין"
+        )
+
+    def _send_step_validation_error(self, chat_id: int, message: str, reply_markup: dict) -> None:
+        """Send validation error while keeping current step active."""
+        self._send_message(
+            chat_id,
+            f"{message}\n{RESTART_HINT}",
+            reply_markup=reply_markup,
         )
 
     def _send_message(self, chat_id: int, text: str, reply_markup: dict | None = None) -> None:
@@ -560,6 +779,10 @@ class TelegramBotService:
         """Clear conversation state for one chat."""
         with self._conversation_lock:
             self._conversation_by_chat.pop(chat_id, None)
+
+    def _is_command(self, text: str, command: str) -> bool:
+        """Return True for exact command or command followed by arguments."""
+        return text == command or text.startswith(f"{command} ")
 
     def _normalize_key(self, value: str) -> str:
         """Normalize text keys for case-insensitive matching."""

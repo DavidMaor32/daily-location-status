@@ -189,7 +189,7 @@ class MirroredStorageProvider(StorageProvider):
 
 
 def build_storage(settings: Settings) -> StorageProvider:
-    """Factory to build storage provider from environment settings."""
+    """Factory to build storage provider from YAML configuration settings."""
     mode = settings.storage_mode.strip().lower()
     if mode == "s3":
         logger.info("Using S3 storage mode")
