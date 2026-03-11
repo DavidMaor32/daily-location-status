@@ -26,8 +26,8 @@
   --ok-text: #1f6d30;
   --bad-bg: #f8d7d9;
   --bad-text: #8a1f2a;
-  --missing-bg: #edf2f7;
-  --missing-text: #475569;
+  --missing-bg: #fff4c7;
+  --missing-text: #6f5600;
   --error-bg: #ffe5e6;
   --error-text: #8a2127;
 }
@@ -249,6 +249,46 @@ textarea {
   border-color: var(--primary);
   color: #fff;
   background: var(--primary);
+}
+
+.btn-status-ok {
+  border-color: #b9dec1;
+  background: #f2fbf4;
+  color: #2a6f3b;
+}
+
+.btn-status-bad {
+  border-color: #edc2c6;
+  background: #fff3f4;
+  color: #8a1f2a;
+}
+
+.btn-status-missing {
+  border-color: #f0de9a;
+  background: #fff9e5;
+  color: #755c00;
+}
+
+.btn-chip.active-status {
+  font-weight: 800;
+}
+
+.btn-status-ok.active-status {
+  background: var(--ok-bg);
+  color: var(--ok-text);
+  border-color: #78bf89;
+}
+
+.btn-status-bad.active-status {
+  background: var(--bad-bg);
+  color: var(--bad-text);
+  border-color: #cc7f87;
+}
+
+.btn-status-missing.active-status {
+  background: var(--missing-bg);
+  color: var(--missing-text);
+  border-color: #c6a336;
 }
 
 .dates-card {

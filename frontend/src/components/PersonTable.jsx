@@ -26,6 +26,19 @@ function formatTimestamp(value) {
   });
 }
 
+// Return status quick-button classes with color + selected state.
+function getStatusQuickButtonClass(targetStatus, currentStatus) {
+  let toneClass = "btn-status-missing";
+  if (targetStatus === DAILY_STATUS_OK) {
+    toneClass = "btn-status-ok";
+  } else if (targetStatus === DAILY_STATUS_BAD) {
+    toneClass = "btn-status-bad";
+  }
+
+  const selectedClass = targetStatus === currentStatus ? "active-status" : "";
+  return `btn btn-chip ${toneClass} ${selectedClass}`.trim();
+}
+
 // Render the main people table with quick actions for status/location updates.
 function PersonTable({
   people,
@@ -101,7 +114,10 @@ function PersonTable({
                   {!readOnly ? (
                     <div className="quick-actions">
                       <button
-                        className="btn btn-chip"
+                        className={getStatusQuickButtonClass(
+                          DAILY_STATUS_OK,
+                          person.daily_status
+                        )}
                         onClick={() =>
                           onQuickUpdate(person.person_id, {
                             daily_status: DAILY_STATUS_OK,
@@ -111,7 +127,10 @@ function PersonTable({
                         תקין
                       </button>
                       <button
-                        className="btn btn-chip"
+                        className={getStatusQuickButtonClass(
+                          DAILY_STATUS_BAD,
+                          person.daily_status
+                        )}
                         onClick={() =>
                           onQuickUpdate(person.person_id, {
                             daily_status: DAILY_STATUS_BAD,
@@ -121,7 +140,10 @@ function PersonTable({
                         לא תקין
                       </button>
                       <button
-                        className="btn btn-chip"
+                        className={getStatusQuickButtonClass(
+                          DAILY_STATUS_MISSING,
+                          person.daily_status
+                        )}
                         onClick={() =>
                           onQuickUpdate(person.person_id, {
                             daily_status: DAILY_STATUS_MISSING,
@@ -182,4 +204,3 @@ function PersonTable({
 }
 
 export default PersonTable;
-

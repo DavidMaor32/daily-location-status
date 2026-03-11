@@ -137,7 +137,7 @@ function App() {
     ]);
   }, [locationOptions, snapshot.people]);
 
-  // "בית" הוא מיקום ברירת מחדל חובה ולכן לא מוצג ברשימת מחיקה.
+  // "Home" is required default location, so it is excluded from delete options.
   const deletableLocationOptions = useMemo(() => {
     return locationOptions.filter((location) => location !== "בבית");
   }, [locationOptions]);

@@ -1,76 +1,71 @@
-﻿# מערכת ניהול סטטוס יומי ומיקום (FastAPI + React)
+# Daily Status & Location Manager (FastAPI + React)
 
-מערכת אינטרנטית לניהול אנשים, מיקומים וסטטוס יומי, עם שמירת היסטוריה בקבצי Excel (`.xlsx`) והזנה עצמאית דרך האתר ובאופן אופציונלי דרך בוט טלגרם.
+Web application for managing people, locations, and daily status with full daily Excel snapshots (`.xlsx`) and optional Telegram self-report integration.
 
-## עקרונות בסיס
+UI language is Hebrew by design.  
+Code comments and project documentation are in English.
 
-- רוב ההגדרות מנוהלות דרך `config/app_config.yaml`.
-- סודות (כמו טוקן טלגרם) מומלץ לשים ב-`.env` ולא ב-Git.
-- כל יום נשמר כ-snapshot נפרד.
-- רשימת האנשים נשמרת ב-master כדי שלא תצטרך להזין אותם מחדש כל יום.
-- בתחילת יום חדש נוצרת אוטומטית קובץ XLSX יומי חדש, שמעתיק מה-master את רשימת האנשים בלבד.
-- בקובץ היומי החדש שדות העבודה מאותחלים לערכי ברירת מחדל (כדי להתחיל עבודה נקייה ליום החדש).
+## Core Behavior
 
-## אבטחה ויציבות
+- All runtime configuration is in `config/app_config.yaml`.
+- Secrets (for example Telegram token) should be kept in `.env` and not committed.
+- Every date is stored as a full snapshot Excel file.
+- People are maintained in a master list so they do not need to be re-entered daily.
+- If a date file does not exist, the system can auto-create it from master list.
+- Daily status default is `לא הוזן`.
 
-- טוקנים וסודות נטענים מ-`.env` כדי לא לשמור אותם בקוד שמועלה ל-Git.
-- שגיאות שרת לא צפויות מוחזרות כלקוח כ-`Internal server error` בלי לחשוף פרטים פנימיים.
-- קלט עצמי (כולל מבוט טלגרם) עובר ולידציה, כולל מגבלת אורך למיקום.
-- ה-Frontend מנרמל payload מה-API כדי למנוע קריסה גם אם מתקבל מבנה לא צפוי.
+## Security & Reliability
 
-## מבנה קוד מודולרי
+- Secret loading from `.env` is supported.
+- Global exception handling avoids leaking internal details.
+- Input validation is enforced across API and Telegram flow.
+- Local Excel writes are atomic (`temp` + replace).
+- Process-level file locks protect write flows on single-host multi-process scenarios.
+
+## Project Structure
 
 Backend:
 
-- `backend/app/main.py` - אתחול FastAPI, lifespan, middlewares, ו-health/status.
-- `backend/app/api/dependencies.py` - תלויות משותפות (`Settings`, `SnapshotService`, parsing לתאריכים, הורדת קבצים).
-- `backend/app/api/routers/snapshot.py` - endpoints של snapshots והיסטוריה.
-- `backend/app/api/routers/people.py` - endpoints של ניהול אנשים והזנה עצמאית.
-- `backend/app/api/routers/locations.py` - endpoints של ניהול מיקומים.
-- `backend/app/api/routers/export.py` - endpoints של הורדת XLSX/ZIP.
-- `backend/app/services/snapshot_service.py` - לוגיקה עסקית של snapshots, master, ו-Excel.
-- `backend/app/services/telegram_bot_service.py` - לוגיקה של בוט טלגרם.
+- `backend/app/main.py` - FastAPI app startup, middleware, health/status.
+- `backend/app/config.py` - YAML + `.env` settings loading and validation.
+- `backend/app/api/dependencies.py` - shared dependencies and helpers.
+- `backend/app/api/routers/*.py` - API endpoints by domain.
+- `backend/app/services/snapshot_service.py` - business logic for snapshots/master/locations.
+- `backend/app/services/telegram_bot_service.py` - Telegram long-polling service.
+- `backend/app/storage/providers.py` - local/S3/mirrored storage backends.
+- `backend/app/utils/file_lock.py` - cross-process lock utility.
 
 Frontend:
 
-- `frontend/src/App.jsx` - עמוד ראשי וניהול state.
-- `frontend/src/api/client.js` - קריאות API מרוכזות.
-- `frontend/src/components/PersonTable.jsx` - טבלת תצוגה ועדכונים מהירים.
-- `frontend/src/components/PersonFormModal.jsx` - טופס הוספה/עריכה/מחיקה.
-- `frontend/src/constants/*.js` - קבועים משותפים לסטטוסים ומיקומים.
+- `frontend/src/App.jsx` - main page/state logic.
+- `frontend/src/api/client.js` - API client methods.
+- `frontend/src/components/*.jsx` - table and modal components.
+- `frontend/src/constants/*.js` - shared UI constants.
+- `frontend/src/styles.css` - styling.
 
-## מה המערכת יודעת לעשות
+Config & docs:
 
-- ניהול טבלת אנשים יומית (מיקום + סטטוס יומי + הערות).
-- הוספה/עריכה/מחיקה של אנשים.
-- הוספת רשימת שמות התחלתית בבת אחת.
-- היסטוריה לפי תאריך + שחזור יום היסטורי ליום הנוכחי.
-- הורדת קובץ XLSX ליום בודד.
-- הורדת ZIP של כל קבצי XLSX בטווח תאריכים.
-- ניהול רשימת מיקומים (הוספה/מחיקה).
-- עבודה במצב `local`, `s3`, או `local_and_s3`.
-- בוט טלגרם אופציונלי להזנה עצמאית.
+- `config/app_config.yaml` - primary configuration.
+- `config/config_readme.txt` - full field reference.
+- `RUN_INSTRUCTIONS.md` - quick local run guide.
+- `production.md` - Windows production + nginx guide.
 
-## דרישות
+## Requirements
 
-- Python `3.9+`
-- Node.js `18+`
+- Python 3.9+
+- Node.js 18+
 - npm
 
-## התקנה והרצה
+## Local Development
 
-### 1) הגדרת קונפיגורציה
+### 1) Configure
 
-ערוך:
+Edit:
 
 - `config/app_config.yaml`
-- `.env` (רק לסודות)
+- `.env` (optional for secrets)
 
-דוגמה ל-`.env`:
-
-- `TELEGRAM_BOT_TOKEN=YOUR_TELEGRAM_BOT_TOKEN`
-
-ערכי ברירת מחדל מומלצים לפיתוח מקומי:
+Typical local values:
 
 - `storage.mode: "local"`
 - `storage.local_storage_dir: "./local_storage"`
@@ -79,7 +74,13 @@ Frontend:
 - `frontend.dev_proxy_target: "http://localhost:8000"`
 - `frontend.dev_server_port: 5173`
 
-### 2) הפעלת Backend
+Optional `.env`:
+
+```env
+TELEGRAM_BOT_TOKEN=YOUR_TELEGRAM_BOT_TOKEN
+```
+
+### 2) Run Backend
 
 ```powershell
 cd backend
@@ -89,13 +90,11 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-בדיקת תקינות:
+Health:
 
 - `http://localhost:8000/api/health`
 
-### 3) הפעלת Frontend
-
-בטרמינל נוסף:
+### 3) Run Frontend
 
 ```powershell
 cd frontend
@@ -103,119 +102,53 @@ npm install
 npm run dev
 ```
 
-כניסה למערכת:
+Open:
 
 - `http://localhost:5173`
 
-## כל אפשרויות הקונפיגורציה (`config/app_config.yaml`)
+## Production on Windows (with nginx)
 
-### `app`
+See:
 
-- `app.name` - שם המערכת (לוגים/זיהוי שירות).
-- `app.environment` - סביבת ריצה (`development` / `production`).
+- `production.md`
 
-### `cors`
+Main command:
 
-- `cors.origins` - רשימת כתובות שמותר להן לגשת ל-API מהדפדפן.
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\start_production.ps1
+```
 
-### `frontend`
+## Storage Output (Excel Files)
 
-- `frontend.api_base_url` - בסיס URL ל-API בצד Frontend.
-- `frontend.dev_server_port` - פורט של Vite.
-- `frontend.dev_proxy_target` - יעד פרוקסי ל-`/api` בזמן פיתוח.
-
-### `storage`
-
-- `storage.mode` - מצב שמירה: `local` / `s3` / `local_and_s3`.
-- `storage.local_storage_dir` - נתיב לשמירה מקומית של קבצי Excel.
-- `storage.seed_people_file` - קובץ CSV התחלתי ליצירת master בפעם הראשונה.
-- `storage.snapshot_restore_policy` - מדיניות שחזור היסטוריה ליום נוכחי:
-  - `exact_snapshot`: שחזור מדויק כפי שהיה ביום ההיסטורי (כולל אנשים שכבר לא ב-master).
-  - `master_only`: שחזור רק לאנשים הפעילים כרגע ב-master.
-
-#### `storage.s3`
-
-- `storage.s3.bucket_name` - שם הבאקט.
-- `storage.s3.snapshots_prefix` - תיקייה לוגית לקבצי snapshot יומיים.
-- `storage.s3.master_key` - מפתח קובץ master של אנשים ב-S3.
-- `storage.s3.locations_key` - מפתח קובץ master של מיקומים ב-S3.
-
-### `aws`
-
-- `aws.access_key_id`
-- `aws.secret_access_key`
-- `aws.session_token` (אופציונלי)
-- `aws.region`
-
-הערה: שדות `aws.*` ו-`storage.s3.*` נדרשים כשעובדים במצב `s3` או `local_and_s3`.
-
-### `telegram` (אופציונלי)
-
-- `telegram.enabled` - הפעלה/כיבוי של הבוט.
-- `telegram.bot_token` - טוקן בוט כ-Fallback בלבד (מומלץ להשאיר ריק).
-- `telegram.allowed_chat_ids` - רשימת chat_id מורשים (`[]` = ללא הגבלה).
-- `telegram.allowed_remote_names` - רשימת שמות מורשים להזנה מרחוק.
-- `telegram.poll_timeout_seconds` - זמן polling מול Telegram.
-- `telegram.poll_retry_seconds` - השהיה בין ניסיונות אחרי כשל.
-
-עדיפות טעינת טוקן:
-
-- קודם `TELEGRAM_BOT_TOKEN` מתוך `.env`.
-- אם לא קיים, המערכת תנסה להשתמש ב-`telegram.bot_token` מתוך YAML.
-
-התנהגות `telegram.allowed_remote_names`:
-
-- `[]` (ריק): כל שם יכול להירשם.
-- רשימה מלאה: רק שמות שנמצאים ברשימה יורשו להזין.
-
-## קבצי Excel במערכת
-
-### קבצים שנוצרים בזמן עבודה
+In local mode:
 
 - `local_storage/master/people_master.xlsx`
 - `local_storage/master/locations.xlsx`
 - `local_storage/snapshots/YYYY-MM-DD.xlsx`
 
-התנהגות יצירת snapshot יומי חדש:
+In S3 or dual mode:
 
-- אם אין קובץ לתאריך שבחרת (כולל תאריך עבר), המערכת יוצרת אותו אוטומטית.
-- הקובץ החדש נבנה לפי רשימת האנשים ב-master.
-- ערכי העבודה היומיים מאותחלים (למשל `daily_status` מתחיל כ-`לא הוזן`).
+- Same logical keys are used under configured S3 prefix/bucket.
 
-### קובץ people_master לדוגמה
+## Supported Status Values
 
-נוסף לפרויקט קובץ דוגמה מוכן:
+Daily status (`daily_status`):
 
-- `backend/data/people_master_example.xlsx`
+- `תקין`
+- `לא תקין`
+- `לא הוזן`
 
-עמודות בקובץ:
+Self-report status (`self_daily_status`):
 
-- `person_id`
-- `full_name`
+- `תקין`
+- `לא תקין`
 
-שימוש מומלץ:
-
-1. אם אתה רוצה להתחיל עם הקובץ הזה במצב מקומי, העתק אותו ל:
-   - `local_storage/master/people_master.xlsx`
-2. אם עובדים מול S3, העלה אותו ל-key שמוגדר ב:
-   - `storage.s3.master_key`
-
-## סטטוסים במערכת
-
-- סטטוס יומי (`daily_status`):
-  - `תקין`
-  - `לא תקין`
-  - `לא הוזן`
-- סטטוס הזנה עצמאית (`self_daily_status`):
-  - `תקין`
-  - `לא תקין`
-
-## API מרכזי
+## Main API Endpoints
 
 - `GET /api/health`
 - `GET /api/system/status`
 - `GET /api/snapshot/today`
-- `GET /api/snapshot/{YYYY-MM-DD}` (`create_if_missing=true` כברירת מחדל)
+- `GET /api/snapshot/{YYYY-MM-DD}`
 - `GET /api/history/dates`
 - `POST /api/history/{YYYY-MM-DD}/restore-to-today`
 - `GET /api/locations`
@@ -230,78 +163,51 @@ npm run dev
 - `GET /api/export/day/{YYYY-MM-DD}`
 - `GET /api/export/range?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD`
 
-## בדיקות מהירות
+## Tests & Build
+
+Backend tests:
 
 ```powershell
 cd backend
-.\.venv\Scripts\python.exe -m compileall app
-
-cd ..\frontend
-npm run build
-```
-
-## בדיקות אוטומטיות
-
-נוספו בדיקות business logic עבור `SnapshotService` וקונפיגורציה:
-
-- יצירת snapshot ליום חדש עם איפוס שדות יומיים
-- שחזור `exact_snapshot` כולל אנשים שנמחקו מה-master
-- שחזור `master_only` עם אנשים פעילים בלבד
-- הוספת רשימת שמות התחלתית עם מניעת כפילויות
-- יצירת snapshot אוטומטית לתאריך עבר חסר
-- טעינת `.env` (כולל BOM / `export KEY=...`)
-- עדיפות `TELEGRAM_BOT_TOKEN` על פני token ב-YAML
-- חסימת `self_location` ארוך מדי בעדכון עצמי
-
-הרצה:
-
-```powershell
-cd backend
-.\.venv\Scripts\Activate.ps1
 pytest -q
 ```
 
-קובץ בדיקות:
+Backend bytecode compile check:
 
-- `backend/tests/test_snapshot_service.py`
-- `backend/tests/test_config_env.py`
+```powershell
+cd backend
+python -m compileall app
+```
 
-## תקלות נפוצות
+Frontend production build:
+
+```powershell
+cd frontend
+npm run build
+```
+
+## Common Issues
 
 ### `Seed people file was not found`
 
-בדוק שהנתיב בקונפיג תואם לקובץ קיים:
+Check `storage.seed_people_file` in `config/app_config.yaml`.
 
-- `storage.seed_people_file: "./backend/data/sample_people.csv"`
+### Frontend cannot reach backend
 
-### Frontend לא מצליח לדבר עם Backend
-
-בדוק:
+Check:
 
 - `frontend.api_base_url: ""`
 - `frontend.dev_proxy_target: "http://localhost:8000"`
 
-### שיניתי קונפיגורציה ולא קרה שינוי
+### Config change does not apply
 
-צריך לבצע restart גם ל-Backend וגם ל-Frontend אחרי שינוי ב-`config/app_config.yaml`.
+Restart backend (and frontend in dev mode) after changing `config/app_config.yaml`.
 
-## העברה למחשב אחר
+## Migration/Scale Note
 
-1. מעתיקים את כל תיקיית הפרויקט.
-2. מעדכנים את `config/app_config.yaml` לפי המחשב החדש.
-3. מתקינים תלות מחדש:
-   - `pip install -r backend/requirements.txt`
-   - `npm install` בתוך `frontend`
-4. אם צריך היסטוריה קיימת, מעתיקים גם את `local_storage`.
+Current MVP is Excel-first and works well for small/medium usage.  
+For high concurrency/load, move operational writes to SQLite/Postgres and keep Excel as daily export snapshots.
 
-## Scale לעומסים גבוהים
-
-ל-MVP העבודה עם Excel נכונה ופשוטה. אם צפוי עומס גבוה (הרבה עדכונים במקביל), מומלץ לעבור ל:
-
-1. DB תפעולי (`SQLite`/`Postgres`) לכתיבה וקריאה שוטפת.
-2. יצוא קבצי XLSX כ-snapshot יומי (ולא כמקור הנתונים הראשי בזמן אמת).
-3. השארת `people_master.xlsx` כיצוא/גיבוי, לא כמנוע כתיבה תפעולי.
-
-תוכנית מעבר מפורטת:
+See:
 
 - `DB_SCALE_PLAN.md`

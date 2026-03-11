@@ -1,24 +1,24 @@
-﻿# הוראות הפעלה מהירות
+# Quick Run Instructions
 
-המערכת עובדת עם קובץ קונפיגורציה אחד בלבד:
+This project is configured from a single YAML file:
 
 - `config/app_config.yaml`
 
-בנוסף, לסודות מומלץ להשתמש ב-`.env` (למשל טוקן טלגרם).
+For secrets (for example Telegram token), use `.env`.
 
-## 1) דרישות
+## 1) Requirements
 
-- Python 3.9 ומעלה
-- Node.js 18 ומעלה
+- Python 3.9+
+- Node.js 18+
 - npm
 
-## 2) בדיקת קונפיגורציה
+## 2) Check Configuration
 
-פתח וערוך:
+Edit:
 
 - `config/app_config.yaml`
 
-ערכים מומלצים לפיתוח מקומי:
+Recommended local-development values:
 
 - `storage.mode: "local"`
 - `storage.snapshot_restore_policy: "exact_snapshot"`
@@ -26,11 +26,11 @@
 - `frontend.dev_server_port: 5173`
 - `frontend.dev_proxy_target: "http://localhost:8000"`
 
-לקובץ `.env` (אופציונלי אך מומלץ לטוקן):
+Optional `.env`:
 
 - `TELEGRAM_BOT_TOKEN=YOUR_TOKEN`
 
-## 3) הרצת Backend (טרמינל 1)
+## 3) Run Backend (Terminal 1)
 
 ```powershell
 cd backend
@@ -40,12 +40,11 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-בדיקת תקינות:
+Health endpoint:
 
 - `http://localhost:8000/api/health`
-- תשובה תקינה: `{"status":"ok"}`
 
-## 4) הרצת Frontend (טרמינל 2)
+## 4) Run Frontend (Terminal 2)
 
 ```powershell
 cd frontend
@@ -53,67 +52,70 @@ npm install
 npm run dev
 ```
 
-כניסה למערכת:
+Open app:
 
 - `http://localhost:5173`
 
-## 5) בוט טלגרם (אופציונלי)
+## 5) Telegram Bot (Optional)
 
-הפעל דרך `config/app_config.yaml`:
+Enable in `config/app_config.yaml`:
 
 - `telegram.enabled: true`
-- `telegram.bot_token: ""` (מומלץ להשאיר ריק)
-- `telegram.allowed_remote_names: []` (ריק = אין הגבלת שמות, כל שם יכול להירשם)
+- `telegram.bot_token: ""` (recommended to keep empty)
+- `telegram.allowed_remote_names: []` (empty list = no name restriction)
 
-שים את הטוקן ב-`.env`:
+Store token in `.env`:
 
 - `TELEGRAM_BOT_TOKEN=YOUR_TOKEN`
 
-תהליך הזנה בבוט:
+Conversation flow:
 
 1. `/start`
-2. בחירת שם
-3. בחירת מיקום
-4. בחירת סטטוס (`תקין` / `לא תקין`)
-5. הודעת הצלחה/כישלון
+2. choose name
+3. choose location
+4. choose status (`תקין` / `לא תקין`)
+5. bot returns success/failure result
 
-במערכת האתר סטטוס יומי כולל גם אפשרות `לא הוזן` (וזה סטטוס ברירת המחדל לאדם חדש).
+Website daily status supports three values:
 
-אם הבוט לא פעיל:
+- `תקין`
+- `לא תקין`
+- `לא הוזן` (default for new person)
 
-- המערכת ממשיכה לעבוד רגיל.
-- עמודות הזנה עצמאית יישארו ריקות.
+If bot is disabled:
 
-## 6) רשימת שמות התחלתית (בלי להזין מחדש כל יום)
+- Website still works normally.
+- Self-report columns remain empty.
 
-במסך הראשי יש אזור `רשימת שמות התחלתית`:
+## 6) Initial People List (No Need to Re-enter Daily)
 
-1. מדביקים שמות (שם בכל שורה או מופרד בפסיקים).
-2. לוחצים `הוסף רשימת שמות`.
-3. המערכת מוסיפה רק שמות חדשים, ושמות קיימים מדולגים.
+In the main screen use **Initial Names List**:
 
-מה זה נותן:
+1. Paste names (one per line or comma-separated).
+2. Click the add-list button.
+3. System adds only missing names and skips existing names.
 
-- השמות נשמרים ב-master (`people_master.xlsx`).
-- בכל יום חדש ה-snapshot נבנה אוטומטית מה-master.
-- לכן לא צריך להזין שוב את אותם האנשים בכל תאריך.
+Result:
 
-## 7) תקלות נפוצות
+- Names are stored in master (`people_master.xlsx`).
+- New daily snapshots are auto-built from master.
 
-### Backend לא עולה
+## 7) Common Issues
 
-- ודא שהפעלת venv:
+### Backend does not start
+
+- Ensure venv is active:
   - `.\.venv\Scripts\Activate.ps1`
-- ודא שהרצת:
+- Ensure dependencies are installed:
   - `pip install -r requirements.txt`
 
-### Frontend לא מתחבר ל-Backend
+### Frontend cannot reach backend
 
-בדוק ב-`config/app_config.yaml`:
+Check `config/app_config.yaml`:
 
 - `frontend.api_base_url: ""`
 - `frontend.dev_proxy_target: "http://localhost:8000"`
 
-### שיניתי קונפיגורציה ולא השתנה כלום
+### Config changes do not apply
 
-אחרי שינוי `config/app_config.yaml` צריך restart גם ל-Backend וגם ל-Frontend.
+After changing `config/app_config.yaml`, restart both backend and frontend.
