@@ -34,7 +34,8 @@ jobs:
           pip install pyflakes vulture
 
       - name: Run backend tests
-        run: python -m pytest backend/tests -q
+        working-directory: backend
+        run: PYTHONPATH=$(pwd) pytest -q
 
       - name: Lint backend with pyflakes
         run: python -m pyflakes backend/app backend/tests
