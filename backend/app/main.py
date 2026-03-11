@@ -170,10 +170,21 @@ def get_today_snapshot(service: SnapshotService = Depends(service_dep)) -> Snaps
 
 
 @app.get("/api/snapshot/{snapshot_date}", response_model=SnapshotResponse)
-def get_snapshot(snapshot_date: str, service: SnapshotService = Depends(service_dep)) -> SnapshotResponse:
-    """Return snapshot for a specific date."""
+def get_snapshot(
+    snapshot_date: str,
+    create_if_missing: bool = True,
+    service: SnapshotService = Depends(service_dep),
+) -> SnapshotResponse:
+    """
+    Return snapshot for a specific date.
+
+    By default missing dates are auto-created from master people list so
+    operators can work on any selected day without a manual bootstrap step.
+    """
     parsed_date = parse_date(snapshot_date)
-    return SnapshotResponse(**service.get_snapshot_for_date(parsed_date, create_if_missing=False))
+    return SnapshotResponse(
+        **service.get_snapshot_for_date(parsed_date, create_if_missing=create_if_missing)
+    )
 
 
 @app.get("/api/export/day/{snapshot_date}")

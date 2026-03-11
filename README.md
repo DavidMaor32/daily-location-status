@@ -140,7 +140,7 @@ npm run dev
 
 התנהגות יצירת snapshot יומי חדש:
 
-- אם אין עדיין קובץ לתאריך הנוכחי, המערכת יוצרת אותו אוטומטית.
+- אם אין קובץ לתאריך שבחרת (כולל תאריך עבר), המערכת יוצרת אותו אוטומטית.
 - הקובץ החדש נבנה לפי רשימת האנשים ב-master.
 - ערכי העבודה היומיים מאותחלים (למשל `daily_status` מתחיל כ-`לא הוזן`).
 
@@ -177,7 +177,7 @@ npm run dev
 - `GET /api/health`
 - `GET /api/system/status`
 - `GET /api/snapshot/today`
-- `GET /api/snapshot/{YYYY-MM-DD}`
+- `GET /api/snapshot/{YYYY-MM-DD}` (`create_if_missing=true` כברירת מחדל)
 - `GET /api/history/dates`
 - `POST /api/history/{YYYY-MM-DD}/restore-to-today`
 - `GET /api/locations`

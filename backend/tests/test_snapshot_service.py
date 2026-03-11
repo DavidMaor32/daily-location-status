@@ -153,3 +153,15 @@ def test_add_initial_people_today_deduplicates_and_updates_master_and_snapshot(t
 
     assert set(master_df["full_name"].tolist()) == {"Alice", "Bob", "Dana"}
     assert set(today_df["full_name"].tolist()) == {"Alice", "Bob", "Dana"}
+
+
+def test_load_snapshot_create_if_missing_builds_missing_past_date(tmp_path: Path) -> None:
+    """Missing historical date should be auto-created from master when requested with create_if_missing."""
+    service = _build_service(tmp_path=tmp_path, seed_names=["Alice", "Bob"])
+    past_date = date.today() - timedelta(days=7)
+
+    past_df = service.load_snapshot(past_date, create_if_missing=True)
+
+    assert set(past_df["full_name"].tolist()) == {"Alice", "Bob"}
+    assert set(past_df["location"].tolist()) == {DEFAULT_LOCATION}
+    assert set(past_df["daily_status"].tolist()) == {DEFAULT_DAILY_STATUS}
