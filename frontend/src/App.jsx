@@ -570,11 +570,11 @@ function App() {
               טען תאריך
             </button>
             <button
-              className="btn btn-secondary"
+              className="btn btn-primary"
               onClick={handleDownloadDayFile}
               disabled={loading || actionLoading || !selectedDate}
             >
-              הורד XLSX ליום
+              הורד אקסל ליום
             </button>
             <button
               className="btn btn-primary"
