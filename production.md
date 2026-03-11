@@ -100,7 +100,23 @@ Invoke-WebRequest http://127.0.0.1:8000/api/health
 Invoke-WebRequest http://localhost/
 ```
 
-## 9. Manual nginx commands (optional)
+## 9. How to access the app
+
+1. Open the web app (UI) in browser:
+   `http://localhost`
+   (or `http://localhost:8080` if you started nginx on `8080`)
+
+2. API is available behind the same nginx host under `/api`:
+   `http://localhost/api/health`
+
+3. If you need direct backend access (without nginx):
+   `http://127.0.0.1:8000`
+
+4. From another computer in the same network, use this machine IP:
+   `http://<YOUR_WINDOWS_IP>`
+   (or `http://<YOUR_WINDOWS_IP>:8080` if nginx runs on `8080`)
+
+## 10. Manual nginx commands (optional)
 
 ```powershell
 cd .\nginx-1.28.2
@@ -110,9 +126,28 @@ cd .\nginx-1.28.2
 .\nginx.exe -p "$PWD" -c conf/nginx.conf -s quit
 ```
 
-## 10. Production notes
+## 11. Production notes
 
 1. Keep backend workers at `1` in current architecture (Excel + Telegram).
 2. In production, Nginx serves `frontend/dist`, so `npm run dev` is not needed.
 3. After frontend changes: run `npm run build`, then restart using `start_production.ps1`.
 4. After YAML config changes: restart backend (`stop_production` then `start_production`).
+
+## 12. Troubleshooting: "Welcome to nginx!"
+
+If you see the default nginx welcome page, nginx is serving the wrong config/site.
+
+Run this exact reset sequence from project root:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\stop_production.ps1 -BackendPort 8000
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\configure_nginx.ps1 -NginxPort 80 -BackendPort 8000
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\start_production.ps1 -SkipInstall -SkipBuild -BackendPort 8000 -NginxPort 80
+```
+
+Then open:
+
+1. `http://localhost` (UI)
+2. `http://localhost/api/health` (API check)
+
+If needed, hard refresh browser cache with `Ctrl+F5`.
