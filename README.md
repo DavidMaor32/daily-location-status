@@ -164,6 +164,7 @@ Self-report status (`self_daily_status`):
 - `GET /api/system/status`
 - `GET /api/snapshot/today`
 - `GET /api/snapshot/{YYYY-MM-DD}`
+- `POST /api/snapshot/{YYYY-MM-DD}/save`
 - `GET /api/history/dates`
 - `POST /api/history/{YYYY-MM-DD}/restore-to-today`
 - `GET /api/locations`
@@ -200,6 +201,26 @@ Frontend production build:
 cd frontend
 npm run build
 ```
+
+Backend smoke test (starts backend temporarily and checks critical endpoints):
+
+```powershell
+python scripts/smoke_backend.py
+```
+
+## CI
+
+GitHub Actions workflow is included:
+
+- `.github/workflows/ci.yml`
+
+It runs on every `push` and `pull_request` and includes:
+
+1. `pytest -q` (backend tests)
+2. `pyflakes` (backend static checks)
+3. `vulture --min-confidence 80` (dead-code scan)
+4. `npm run build` (frontend build)
+5. `python scripts/smoke_backend.py` (temporary backend smoke test)
 
 ## Common Issues
 

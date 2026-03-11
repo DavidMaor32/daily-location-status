@@ -15,3 +15,7 @@ local_storage/
 # Secrets / local environment
 .env
 .env.*
+
+# Nginx runtime logs / pid
+nginx-1.28.2/logs/*
+!nginx-1.28.2/logs/.gitkeep

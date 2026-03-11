@@ -110,6 +110,8 @@ body {
   min-width: 118px;
   width: 118px;
   max-width: 118px;
+  gap: 2px;
+  align-content: start;
 }
 
 .compact-filter-group input,
@@ -119,11 +121,13 @@ body {
   padding: 3px 8px;
   font-size: 0.82rem;
   border-radius: 8px;
+  margin: 0;
 }
 
 .compact-filter-group label {
+  margin: 0;
   font-size: 0.8rem;
-  line-height: 1.1;
+  line-height: 1;
 }
 
 .toolbar-card {

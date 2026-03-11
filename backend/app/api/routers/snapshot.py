@@ -40,6 +40,17 @@ def get_available_dates(service: SnapshotService = Depends(service_dep)) -> Avai
     return AvailableDatesResponse(dates=service.list_available_dates())
 
 
+@router.post("/api/snapshot/{snapshot_date}/save")
+def save_snapshot_file(
+    snapshot_date: str,
+    _: None = Depends(require_write_access),
+    service: SnapshotService = Depends(service_dep),
+) -> dict:
+    """Force-save snapshot file for selected date (explicit manual save action)."""
+    parsed_date = parse_date(snapshot_date)
+    return service.save_snapshot_for_date(parsed_date, create_if_missing=True)
+
+
 @router.post("/api/history/{snapshot_date}/restore-to-today", response_model=SnapshotResponse)
 def restore_history_to_today(
     snapshot_date: str,

@@ -15,6 +15,7 @@ import {
   fetchTodaySnapshot,
   getTodayString,
   quickUpdatePerson,
+  saveSnapshotNow,
   replacePerson,
   restoreHistoryToToday,
 } from "./api/client";
@@ -304,6 +305,26 @@ function App() {
     }
   }
 
+  async function handleManualSaveExcel() {
+    if (!selectedDate) {
+      setError("יש לבחור תאריך לשמירה");
+      return;
+    }
+
+    setActionLoading(true);
+    setError("");
+    try {
+      const response = await saveSnapshotNow(selectedDate);
+      const savedRows = Number(response?.rows_saved || 0);
+      window.alert(`השמירה בוצעה בהצלחה. נשמרו ${savedRows} רשומות.`);
+      await refreshDates();
+    } catch (err) {
+      setError(getErrorMessage(err, "שמירת קובץ האקסל נכשלה"));
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
   async function handleDownloadRangeFiles() {
     if (!downloadFromDate || !downloadToDate) {
       setError("יש לבחור טווח תאריכים מלא");
@@ -554,6 +575,13 @@ function App() {
               disabled={loading || actionLoading || !selectedDate}
             >
               הורד XLSX ליום
+            </button>
+            <button
+              className="btn btn-primary"
+              onClick={handleManualSaveExcel}
+              disabled={loading || actionLoading || !selectedDate}
+            >
+              שמור אקסל
             </button>
           </div>
 

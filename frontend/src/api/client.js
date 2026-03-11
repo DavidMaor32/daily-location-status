@@ -70,6 +70,13 @@ export function fetchSnapshotByDate(snapshotDate) {
   return apiRequest(`/api/snapshot/${snapshotDate}`);
 }
 
+// Force-save selected snapshot file (explicit save action).
+export function saveSnapshotNow(snapshotDate) {
+  return apiRequest(`/api/snapshot/${snapshotDate}/save`, {
+    method: "POST",
+  });
+}
+
 // Download one day's snapshot file as xlsx.
 export function downloadDaySnapshot(snapshotDate) {
   return fileRequest(`/api/export/day/${snapshotDate}`, `${snapshotDate}.xlsx`);

@@ -112,6 +112,21 @@ class SnapshotService:
         people = [self._row_to_record(row) for _, row in df.iterrows()]
         return {"date": snapshot_date, "people": people}
 
+    def save_snapshot_for_date(self, snapshot_date: date, create_if_missing: bool = True) -> dict:
+        """
+        Force-save snapshot file for a given date.
+
+        Useful for an explicit "Save Excel now" UI action, even when no field was changed.
+        """
+        with self._write_guard():
+            snapshot_df = self.load_snapshot(snapshot_date, create_if_missing=create_if_missing)
+            self.save_snapshot(snapshot_date, snapshot_df)
+            return {
+                "date": snapshot_date.isoformat(),
+                "rows_saved": int(len(snapshot_df.index)),
+                "snapshot_key": self._snapshot_key(snapshot_date),
+            }
+
     def list_available_dates(self) -> list[date]:
         """List all snapshot dates currently available in storage."""
         prefix = self.settings.s3_snapshots_prefix.strip("/")

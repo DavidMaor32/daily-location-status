@@ -127,6 +127,20 @@ def test_patch_person_rejects_unknown_location(tmp_path: Path) -> None:
     assert "configured locations" in response.json()["detail"]
 
 
+def test_manual_save_snapshot_endpoint(tmp_path: Path) -> None:
+    """POST /api/snapshot/{date}/save should persist selected date snapshot on demand."""
+    service, settings = _build_service(tmp_path=tmp_path, seed_names=["Alice", "Bob"])
+    client = _build_test_client(service, settings)
+    target_date = (date.today() - timedelta(days=2)).isoformat()
+
+    response = client.post(f"/api/snapshot/{target_date}/save")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["date"] == target_date
+    assert payload["rows_saved"] == 2
+    assert payload["snapshot_key"].endswith(f"{target_date}.xlsx")
+
+
 def test_write_endpoints_require_api_key_when_configured(tmp_path: Path) -> None:
     """When write_api_key is configured, mutating endpoints must validate X-API-Key."""
     service, settings = _build_service(
@@ -153,6 +167,22 @@ def test_write_endpoints_require_api_key_when_configured(tmp_path: Path) -> None
     )
     assert good_header_response.status_code == 200
     assert "מיקום 6" in good_header_response.json()["locations"]
+
+    target_date = date.today().isoformat()
+    save_missing_key_response = client.post(f"/api/snapshot/{target_date}/save")
+    assert save_missing_key_response.status_code == 401
+
+    save_bad_key_response = client.post(
+        f"/api/snapshot/{target_date}/save",
+        headers={"X-API-Key": "wrong-key"},
+    )
+    assert save_bad_key_response.status_code == 403
+
+    save_good_key_response = client.post(
+        f"/api/snapshot/{target_date}/save",
+        headers={"X-API-Key": "super-secret"},
+    )
+    assert save_good_key_response.status_code == 200
 
 
 def test_read_endpoints_are_open_even_when_write_api_key_is_configured(tmp_path: Path) -> None:
