@@ -518,15 +518,6 @@ function App() {
 
   return (
     <div className="app-shell" dir="rtl">
-      <button
-        className="btn btn-primary floating-save-btn"
-        onClick={handleDownloadDayFile}
-        disabled={loading || actionLoading || !selectedDate}
-        title="שמור קובץ Excel של התאריך הנבחר"
-      >
-        שמור
-      </button>
-
       <header className="header-card">
         <div>
           <h1>ניהול סטטוס יומי ומיקום</h1>
@@ -568,11 +559,11 @@ function App() {
 
           <button
             className="btn btn-primary"
-            onClick={openAddModal}
-            disabled={isReadOnly || actionLoading}
-            title={isReadOnly ? "ניתן להוסיף אנשים רק ביום הנוכחי" : ""}
+            onClick={handleDownloadDayFile}
+            disabled={loading || actionLoading || !selectedDate}
+            title="שמור קובץ Excel של התאריך הנבחר"
           >
-            הוסף אדם
+            שמור אקסל
           </button>
 
           {isReadOnly ? (
@@ -644,7 +635,7 @@ function App() {
               onClick={handleAddLocation}
               disabled={actionLoading}
             >
-              הוסף
+              הוסף מיקום
             </button>
           </div>
           <div className="location-remove-row">
@@ -673,6 +664,16 @@ function App() {
               }
             >
               מחק מיקום
+            </button>
+          </div>
+          <div className="location-person-action-row">
+            <button
+              className="btn btn-primary"
+              onClick={openAddModal}
+              disabled={isReadOnly || actionLoading}
+              title={isReadOnly ? "ניתן להוסיף אנשים רק ביום הנוכחי" : ""}
+            >
+              הוסף אדם
             </button>
           </div>
         </div>

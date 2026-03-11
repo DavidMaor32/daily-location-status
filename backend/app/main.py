@@ -20,6 +20,7 @@ from app.services.telegram_bot_service import TelegramBotService
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 telegram_bot_service: TelegramBotService | None = None
+startup_error: str | None = None
 
 
 def get_system_status() -> dict:
@@ -49,18 +50,23 @@ def get_system_status() -> dict:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     """Initialize today's snapshot during application startup."""
-    global telegram_bot_service
+    global telegram_bot_service, startup_error
     service = get_snapshot_service()
     settings = get_settings()
+    startup_error = None
     logger.info("Using startup config file: %s", settings.config_file_path)
     try:
         service.initialize_today_snapshot()
         logger.info("Today's snapshot initialized successfully")
     except Exception as exc:  # noqa: BLE001
+        startup_error = str(exc)
         logger.exception("Startup initialization failed: %s", exc)
-
-    telegram_bot_service = TelegramBotService(settings=settings, snapshot_service=service)
-    telegram_bot_service.start()
+        logger.error("Skipping Telegram bot startup because startup initialization failed")
+        telegram_bot_service = None
+        raise RuntimeError("Startup initialization failed") from exc
+    else:
+        telegram_bot_service = TelegramBotService(settings=settings, snapshot_service=service)
+        telegram_bot_service.start()
     try:
         yield
     finally:
@@ -123,12 +129,20 @@ app.include_router(people_router)
 
 @app.get("/api/health")
 def health() -> dict:
-    """Health-check endpoint used by monitoring and readiness checks."""
-    return {"status": "ok"}
+    """
+    Health-check endpoint used by monitoring and readiness checks.
+
+    Returns degraded status when startup initialization has failed.
+    """
+    startup_ok = startup_error is None
+    return {
+        "status": "ok" if startup_ok else "degraded",
+        "startup_ok": startup_ok,
+        "startup_error": startup_error,
+    }
 
 
 @app.get("/api/system/status", response_model=SystemStatusResponse)
 def system_status() -> SystemStatusResponse:
     """Return current runtime status for optional integrations."""
     return SystemStatusResponse(**get_system_status())
-

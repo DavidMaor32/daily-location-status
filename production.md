@@ -1,199 +1,118 @@
-﻿# production.md
+# Production on Windows (FastAPI + React + Nginx)
 
-מדריך הפעלה ל-Production (Ubuntu + systemd + Nginx)
+This guide runs the app on Windows using your local `nginx-1.28.2` folder.
 
-## 1) התקנה חד-פעמית על השרת
+## 1. Prerequisites
 
-```bash
-sudo apt update
-sudo apt install -y python3 python3-venv python3-pip nginx curl
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt install -y nodejs
-```
+1. Python 3.9+
+2. Node.js 18+
+3. PowerShell
+4. Nginx extracted at:
+   `C:\Users\avish\OneDrive\Desktop\app\nginx-1.28.2`
 
-בדיקת גרסאות:
+If your folder name is different (for example `ngin-1.28.2`), rename it or update the scripts.
 
-```bash
-python3 --version
-node --version
-npm --version
-```
+## 2. Configuration
 
-## 2) העתקת פרויקט והגדרת קבצים
+1. Update:
+   `config/app_config.yaml`
+2. Keep secrets in:
+   `.env`
 
-```bash
-cd /opt
-sudo mkdir -p daily-status-app
-sudo chown -R $USER:$USER daily-status-app
-```
+Example `.env`:
 
-העתק את קבצי הפרויקט לתיקייה:
-
-```bash
-cd /opt/daily-status-app
-```
-
-ערוך קונפיגורציה:
-
-```bash
-nano config/app_config.yaml
-```
-
-צור קובץ `.env` (לא להעלות ל-git):
-
-```bash
-cat > .env << 'EOF'
+```env
 TELEGRAM_BOT_TOKEN=PUT_YOUR_TOKEN_HERE
-EOF
-chmod 600 .env
 ```
 
-## 3) התקנת Backend
+## 3. What was added
 
-```bash
-cd /opt/daily-status-app/backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
+Windows production scripts were added:
+
+1. `scripts/windows/configure_nginx.ps1`
+   - Generates `nginx-1.28.2/conf/nginx.conf` for this project.
+   - Serves `frontend/dist`.
+   - Proxies `/api` to backend.
+   - Runs `nginx -t` validation.
+
+2. `scripts/windows/start_production.ps1`
+   - Creates backend venv if missing.
+   - Installs dependencies (optional skip).
+   - Builds frontend (optional skip).
+   - Starts backend on `127.0.0.1:8000` with `--workers 1`.
+   - Starts or reloads Nginx.
+
+3. `scripts/windows/stop_production.ps1`
+   - Stops backend process for this app.
+   - Sends graceful `quit` to Nginx.
+
+## 4. First run
+
+From project root:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\start_production.ps1
 ```
 
-בדיקת תקינות:
+This runs install + build + backend + nginx.
 
-```bash
-python -m pytest -q
-python -m compileall app
+## 5. Fast run (after first setup)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\start_production.ps1 -SkipInstall -SkipBuild
 ```
 
-## 4) Build ל-Frontend
+## 6. Stop all
 
-```bash
-cd /opt/daily-status-app/frontend
-npm ci
-npm run build
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\stop_production.ps1
 ```
 
-## 5) הפעלת Backend כ-service (systemd)
+## 7. Ports
 
-צור service:
+Default ports:
 
-```bash
-sudo tee /etc/systemd/system/daily-status-backend.service > /dev/null << 'EOF'
-[Unit]
-Description=Daily Status Backend (FastAPI)
-After=network.target
+1. Backend: `8000`
+2. Nginx: `80`
 
-[Service]
-Type=simple
-User=www-data
-Group=www-data
-WorkingDirectory=/opt/daily-status-app/backend
-Environment=PYTHONUNBUFFERED=1
-ExecStart=/opt/daily-status-app/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1
-Restart=always
-RestartSec=3
+If port 80 is busy, use another nginx port:
 
-[Install]
-WantedBy=multi-user.target
-EOF
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\start_production.ps1 -NginxPort 8080 -SkipInstall
 ```
 
-שים לב:
-- `--workers 1` הוא חובה במבנה הנוכחי (Excel + Telegram bot) כדי למנוע התנגשויות בין תהליכים.
+## 8. Health checks
 
-הפעלת השירות:
+1. Through nginx:
+   `http://localhost`
+   (or `http://localhost:8080` if you changed port)
 
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable daily-status-backend
-sudo systemctl start daily-status-backend
-sudo systemctl status daily-status-backend --no-pager
+2. Backend direct:
+   `http://127.0.0.1:8000/api/health`
+
+3. System status:
+   `http://127.0.0.1:8000/api/system/status`
+
+PowerShell checks:
+
+```powershell
+Invoke-WebRequest http://127.0.0.1:8000/api/health
+Invoke-WebRequest http://localhost/
 ```
 
-## 6) הפעלת Frontend עם Nginx
+## 9. Manual nginx commands (optional)
 
-צור קובץ Nginx:
-
-```bash
-sudo tee /etc/nginx/sites-available/daily-status > /dev/null << 'EOF'
-server {
-    listen 80;
-    server_name _;
-
-    root /opt/daily-status-app/frontend/dist;
-    index index.html;
-
-    location /api/ {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-}
-EOF
+```powershell
+cd .\nginx-1.28.2
+.\nginx.exe -t -p "$PWD" -c conf/nginx.conf
+.\nginx.exe -p "$PWD" -c conf/nginx.conf
+.\nginx.exe -p "$PWD" -c conf/nginx.conf -s reload
+.\nginx.exe -p "$PWD" -c conf/nginx.conf -s quit
 ```
 
-הפעלה:
+## 10. Production notes
 
-```bash
-sudo ln -sf /etc/nginx/sites-available/daily-status /etc/nginx/sites-enabled/daily-status
-sudo rm -f /etc/nginx/sites-enabled/default
-sudo nginx -t
-sudo systemctl enable nginx
-sudo systemctl restart nginx
-```
-
-## 7) בדיקות Production אחרי עלייה
-
-```bash
-curl -sS http://127.0.0.1:8000/api/health
-curl -sS http://127.0.0.1:8000/api/system/status
-curl -I http://127.0.0.1/
-```
-
-## 8) פקודות תפעול שוטפות
-
-סטטוס ולוגים:
-
-```bash
-sudo systemctl status daily-status-backend --no-pager
-sudo journalctl -u daily-status-backend -f
-sudo systemctl status nginx --no-pager
-```
-
-restart:
-
-```bash
-sudo systemctl restart daily-status-backend
-sudo systemctl restart nginx
-```
-
-## 9) עדכון גרסה (Deploy חדש)
-
-```bash
-cd /opt/daily-status-app
-# git pull (אם עובדים עם git)
-
-cd backend
-source .venv/bin/activate
-pip install -r requirements.txt
-python -m pytest -q
-
-cd ../frontend
-npm ci
-npm run build
-
-sudo systemctl restart daily-status-backend
-sudo systemctl reload nginx
-```
-
-## 10) הערות חשובות
-
-- אם בוט טלגרם פעיל, הרץ מופע Backend יחיד בלבד.
-- אל תשמור טוקנים בתוך `config/app_config.yaml`; שמור אותם ב-`.env`.
-- כל שינוי ב-`config/app_config.yaml` דורש restart ל-Backend.
+1. Keep backend workers at `1` in current architecture (Excel + Telegram).
+2. In production, Nginx serves `frontend/dist`, so `npm run dev` is not needed.
+3. After frontend changes: run `npm run build`, then restart using `start_production.ps1`.
+4. After YAML config changes: restart backend (`stop_production` then `start_production`).

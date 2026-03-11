@@ -4,13 +4,14 @@ import json
 import logging
 import threading
 from collections import Counter
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from app.config import Settings
 from app.exceptions import AppError, NotFoundError, ValidationError
 from app.models import PersonCreate
 from app.services.snapshot_service import SnapshotService
+from app.utils.file_lock import ProcessFileLock
 
 
 logger = logging.getLogger(__name__)
@@ -48,6 +49,10 @@ class TelegramBotService:
                 continue
             self._allowed_remote_names.append(name)
             self._allowed_remote_name_keys.add(normalized_name)
+        # Ensure only one polling worker per machine/process group.
+        lock_path = self.settings.local_storage_dir / ".locks" / "telegram_bot.lock"
+        self._poller_lock = ProcessFileLock(lock_path)
+        self._owns_poller_lock = False
         self._healthy = False
         self._last_error: str | None = None
         self._conversation_by_chat: dict[int, dict] = {}
@@ -65,6 +70,8 @@ class TelegramBotService:
             return
         if self._thread and self._thread.is_alive():
             return
+        if not self._acquire_singleton_poller_lock():
+            return
 
         self._stop_event.clear()
         self._set_health(True, None)
@@ -73,14 +80,20 @@ class TelegramBotService:
             daemon=True,
             name="telegram-bot-poller",
         )
-        self._thread.start()
-        logger.info("Telegram bot polling started")
+        try:
+            self._thread.start()
+            logger.info("Telegram bot polling started")
+        except Exception:
+            self._release_singleton_poller_lock()
+            raise
 
     def stop(self) -> None:
         """Stop polling thread gracefully during application shutdown."""
         self._stop_event.set()
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=self.settings.telegram_poll_timeout_seconds + 2)
+        self._thread = None
+        self._release_singleton_poller_lock()
         self._set_health(False, self._last_error)
         logger.info("Telegram bot polling stopped")
 
@@ -117,17 +130,27 @@ class TelegramBotService:
 
     def _run_poll_loop(self) -> None:
         """Main worker loop: receive Telegram updates and process message commands."""
-        while not self._stop_event.is_set():
-            try:
-                updates = self._poll_updates()
-                self._set_health(True, None)
-                for update in updates:
-                    self._offset = max(self._offset, int(update.get("update_id", 0)) + 1)
-                    self._handle_update(update)
-            except Exception as exc:  # noqa: BLE001
-                self._set_health(False, str(exc))
-                logger.exception("Telegram polling loop failed: %s", exc)
-                self._stop_event.wait(self.settings.telegram_poll_retry_seconds)
+        try:
+            while not self._stop_event.is_set():
+                try:
+                    updates = self._poll_updates()
+                    self._set_health(True, None)
+                    for update in updates:
+                        self._offset = max(self._offset, int(update.get("update_id", 0)) + 1)
+                        self._handle_update(update)
+                except Exception as exc:  # noqa: BLE001
+                    error_text = str(exc)
+                    self._set_health(False, error_text)
+                    if self._is_conflict_error(error_text):
+                        logger.error(
+                            "Telegram polling conflict detected (likely another bot instance is running): %s",
+                            exc,
+                        )
+                        break
+                    logger.exception("Telegram polling loop failed: %s", exc)
+                    self._stop_event.wait(self.settings.telegram_poll_retry_seconds)
+        finally:
+            self._release_singleton_poller_lock()
 
     def _poll_updates(self) -> list[dict]:
         """Fetch pending updates from Telegram API using long polling."""
@@ -708,6 +731,15 @@ class TelegramBotService:
             with urlopen(request, timeout=timeout) as response:  # noqa: S310
                 raw = response.read().decode("utf-8")
                 return json.loads(raw)
+        except HTTPError as exc:
+            body = ""
+            try:
+                body = exc.read().decode("utf-8")
+            except Exception:  # noqa: BLE001
+                body = ""
+            raise RuntimeError(
+                f"Telegram API request failed ({method_name}, code={exc.code}): {body}"
+            ) from exc
         except URLError as exc:
             raise RuntimeError(f"Telegram API request failed ({method_name})") from exc
 
@@ -737,6 +769,38 @@ class TelegramBotService:
         if last_error:
             return "בוט טלגרם פעיל עם שגיאה אחרונה"
         return "בוט טלגרם פעיל"
+
+    def _acquire_singleton_poller_lock(self) -> bool:
+        """
+        Acquire non-blocking process lock for Telegram poller.
+
+        This prevents multiple backend workers on the same machine from
+        polling Telegram with the same token at the same time.
+        """
+        if self._owns_poller_lock:
+            return True
+
+        acquired = self._poller_lock.acquire(blocking=False)
+        if not acquired:
+            message = "Telegram poller is already running in another process"
+            self._set_health(False, message)
+            logger.warning(message)
+            return False
+
+        self._owns_poller_lock = True
+        return True
+
+    def _release_singleton_poller_lock(self) -> None:
+        """Release process lock for Telegram poller when worker stops."""
+        if not self._owns_poller_lock:
+            return
+        self._poller_lock.release()
+        self._owns_poller_lock = False
+
+    def _is_conflict_error(self, message: str) -> bool:
+        """Detect Telegram conflict errors (HTTP 409) from API failures."""
+        normalized = message.lower()
+        return "code=409" in normalized or "conflict" in normalized
 
     def _build_keyboard(self, options: list[str], row_size: int = 2) -> dict:
         """Build Telegram reply keyboard from options list."""

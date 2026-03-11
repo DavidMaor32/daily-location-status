@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
+import time
 from pathlib import Path
 
 import boto3
@@ -47,12 +50,41 @@ class LocalStorageProvider(StorageProvider):
         file_path = self._resolve(key)
         if not file_path.exists():
             raise StorageError(f"File not found: {key}")
-        return file_path.read_bytes()
+        try:
+            return file_path.read_bytes()
+        except OSError as exc:
+            raise StorageError(f"Failed reading local storage key: {key}") from exc
 
     def write_bytes(self, key: str, content: bytes) -> None:
-        """Write object bytes into local storage."""
+        """
+        Write object bytes into local storage atomically.
+
+        File content is first written to a temp file under the same folder and
+        then replaced in one operation, reducing risk of partial/corrupted files.
+        """
         file_path = self._resolve(key, create_parent=True)
-        file_path.write_bytes(content)
+        temp_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="wb",
+                delete=False,
+                dir=str(file_path.parent),
+                prefix=f".tmp-{file_path.name}-",
+                suffix=".tmp",
+            ) as temp_file:
+                temp_file.write(content)
+                temp_file.flush()
+                os.fsync(temp_file.fileno())
+                temp_path = Path(temp_file.name)
+            os.replace(temp_path, file_path)
+        except OSError as exc:
+            raise StorageError(f"Failed writing local storage key: {key}") from exc
+        finally:
+            if temp_path is not None and temp_path.exists():
+                try:
+                    temp_path.unlink()
+                except OSError:
+                    pass
 
     def list_keys(self, prefix: str) -> list[str]:
         """List object keys under a local prefix path."""
@@ -169,13 +201,29 @@ class MirroredStorageProvider(StorageProvider):
         """
         Write to primary and best-effort mirror.
 
-        Local write is authoritative to keep app available when S3 is down.
+        Local write is done first. Mirror write is retried and must succeed;
+        otherwise the caller gets an error so inconsistency is visible.
         """
         self.primary.write_bytes(key, content)
-        try:
-            self.mirror.write_bytes(key, content)
-        except StorageError as exc:
-            logger.warning("Mirror write failed for key %s: %s", key, exc)
+        last_error: StorageError | None = None
+        for attempt in range(2):
+            try:
+                self.mirror.write_bytes(key, content)
+                return
+            except StorageError as exc:
+                last_error = exc
+                logger.error(
+                    "Mirror write failed for key %s (attempt %s/2): %s",
+                    key,
+                    attempt + 1,
+                    exc,
+                )
+                if attempt == 0:
+                    time.sleep(0.4)
+
+        raise StorageError(
+            f"Mirror write failed for key '{key}'. Local write succeeded but S3 sync failed."
+        ) from last_error
 
     def list_keys(self, prefix: str) -> list[str]:
         """Return union of keys from primary and mirror backends."""
@@ -201,5 +249,8 @@ def build_storage(settings: Settings) -> StorageProvider:
         s3_provider = S3StorageProvider(settings)
         return MirroredStorageProvider(primary=local_provider, mirror=s3_provider)
 
-    logger.info("Using local storage mode")
-    return LocalStorageProvider(settings.local_storage_dir)
+    if mode == "local":
+        logger.info("Using local storage mode")
+        return LocalStorageProvider(settings.local_storage_dir)
+
+    raise StorageError(f"Unsupported storage mode: {mode}")

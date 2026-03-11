@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import app.config as config_module
+import pytest
 
 
 def test_load_local_env_file_parses_bom_quotes_and_export(
@@ -51,3 +52,21 @@ def test_settings_prefers_env_token_over_yaml_token(
 
     assert settings.telegram_bot_token == "env-token"
 
+
+def test_settings_rejects_invalid_storage_mode(tmp_path: Path, monkeypatch) -> None:
+    """Invalid storage.mode value should fail fast with clear validation error."""
+    config_file = tmp_path / "app_config.yaml"
+    config_file.write_text(
+        "storage:\n"
+        "  mode: invalid_mode\n",
+        encoding="utf-8",
+    )
+
+    env_file = tmp_path / ".env"
+    env_file.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(config_module, "DEFAULT_APP_CONFIG_PATH", config_file)
+    monkeypatch.setattr(config_module, "DEFAULT_ENV_PATH", env_file)
+
+    with pytest.raises(ValueError, match="Invalid config value"):
+        config_module.Settings.from_yaml()

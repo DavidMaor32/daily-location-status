@@ -2,6 +2,7 @@
 
 import logging
 import threading
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from io import BytesIO
@@ -15,6 +16,7 @@ from app.config import Settings
 from app.exceptions import NotFoundError, StorageError, ValidationError
 from app.models import PersonCreate, PersonUpdate
 from app.storage.base import StorageProvider
+from app.utils.file_lock import ProcessFileLock
 
 
 logger = logging.getLogger(__name__)
@@ -62,8 +64,36 @@ class SnapshotService:
         """Store runtime settings and selected storage provider."""
         self.settings = settings
         self.storage = storage
-        # Protect read-modify-write flows across HTTP requests and Telegram thread.
+        # Protect read-modify-write flows within current process.
         self._write_lock = threading.RLock()
+        # Protect read-modify-write flows across different backend processes on same machine.
+        lock_path = self.settings.local_storage_dir / ".locks" / "snapshot_service.lock"
+        self._process_write_lock = ProcessFileLock(lock_path)
+        self._write_guard_state = threading.local()
+
+    @contextmanager
+    def _write_guard(self):
+        """
+        Combined write lock guard:
+        - thread-level reentrant lock (in-process)
+        - process-level file lock (cross-process)
+        """
+        current_depth = int(getattr(self._write_guard_state, "depth", 0))
+        self._write_guard_state.depth = current_depth + 1
+        try:
+            with self._write_lock:
+                if current_depth == 0:
+                    try:
+                        with self._process_write_lock.locked(timeout_seconds=60):
+                            yield
+                    except TimeoutError as exc:
+                        raise StorageError(
+                            "Timed out while waiting for snapshot write lock"
+                        ) from exc
+                else:
+                    yield
+        finally:
+            self._write_guard_state.depth = current_depth
 
     def initialize_today_snapshot(self) -> None:
         """Load or create today's snapshot during app startup."""
@@ -153,7 +183,7 @@ class SnapshotService:
 
     def add_location(self, location_name: str) -> list[str]:
         """Insert a new location option into locations Excel file."""
-        with self._write_lock:
+        with self._write_guard():
             normalized_name = self._normalize_location_option(location_name)
             if not normalized_name:
                 raise ValidationError("Location name cannot be empty")
@@ -176,7 +206,7 @@ class SnapshotService:
 
     def delete_location(self, location_name: str) -> list[str]:
         """Delete one location option from locations Excel file."""
-        with self._write_lock:
+        with self._write_guard():
             normalized_name = self._normalize_location_option(location_name)
             if not normalized_name:
                 raise ValidationError("Location name cannot be empty")
@@ -215,7 +245,7 @@ class SnapshotService:
         The method saves names to master list and inserts them into today's snapshot,
         so future dates are automatically generated with the same people.
         """
-        with self._write_lock:
+        with self._write_guard():
             normalized_names = self._normalize_initial_names(names)
             if not normalized_names:
                 raise ValidationError("At least one valid full name is required")
@@ -291,7 +321,7 @@ class SnapshotService:
 
     def add_person_today(self, payload: PersonCreate) -> dict:
         """Add a person to master list and today's snapshot."""
-        with self._write_lock:
+        with self._write_guard():
             master_df = self.load_master_people()
             existing_ids = set(master_df["person_id"].tolist())
 
@@ -333,7 +363,7 @@ class SnapshotService:
         if not patch:
             raise ValidationError("No fields were provided for update")
 
-        with self._write_lock:
+        with self._write_guard():
             today = date.today()
             snapshot_df = self.load_snapshot(today, create_if_missing=True)
             matches = snapshot_df.index[snapshot_df["person_id"] == person_id].tolist()
@@ -364,7 +394,7 @@ class SnapshotService:
         - exact `person_id` value
         - exact `full_name` (case-insensitive)
         """
-        with self._write_lock:
+        with self._write_guard():
             today = date.today()
             snapshot_df = self.load_snapshot(today, create_if_missing=True)
             row_index = self._find_row_index_for_lookup(snapshot_df, person_lookup)
@@ -401,7 +431,7 @@ class SnapshotService:
 
     def delete_person_today(self, person_id: str) -> dict:
         """Delete person from today's snapshot and from master list."""
-        with self._write_lock:
+        with self._write_guard():
             today = date.today()
             snapshot_df = self.load_snapshot(today, create_if_missing=True)
             matches = snapshot_df.index[snapshot_df["person_id"] == person_id].tolist()
@@ -421,7 +451,7 @@ class SnapshotService:
 
     def restore_snapshot_to_today(self, source_date: date) -> dict:
         """Restore a historical snapshot into today's snapshot file."""
-        with self._write_lock:
+        with self._write_guard():
             today = date.today()
             if source_date == today:
                 return self.get_snapshot_for_date(today, create_if_missing=True)
@@ -457,7 +487,7 @@ class SnapshotService:
 
     def ensure_snapshot_for_date(self, snapshot_date: date) -> pd.DataFrame:
         """Ensure a snapshot file exists for the given date, then return it."""
-        with self._write_lock:
+        with self._write_guard():
             snapshot_key = self._snapshot_key(snapshot_date)
             if self.storage.exists(snapshot_key):
                 return self.load_snapshot(snapshot_date, create_if_missing=False)
@@ -496,11 +526,12 @@ class SnapshotService:
         """Normalize and persist one date snapshot to storage."""
         clean_df = self._normalize_snapshot_df(df, snapshot_date)
         content = self._to_excel_bytes(clean_df)
-        self.storage.write_bytes(self._snapshot_key(snapshot_date), content)
+        with self._write_guard():
+            self.storage.write_bytes(self._snapshot_key(snapshot_date), content)
 
     def ensure_master_people(self) -> pd.DataFrame:
         """Ensure master people file exists; bootstrap from seed if missing."""
-        with self._write_lock:
+        with self._write_guard():
             if self.storage.exists(self.settings.s3_master_key):
                 return self.load_master_people()
 
@@ -526,11 +557,12 @@ class SnapshotService:
         """Normalize and persist master people list."""
         clean_df = self._normalize_master_df(df)
         content = self._to_excel_bytes(clean_df)
-        self.storage.write_bytes(self.settings.s3_master_key, content)
+        with self._write_guard():
+            self.storage.write_bytes(self.settings.s3_master_key, content)
 
     def ensure_locations_file(self) -> pd.DataFrame:
         """Ensure locations file exists; create it with defaults if missing."""
-        with self._write_lock:
+        with self._write_guard():
             if self.storage.exists(self.settings.s3_locations_key):
                 return self.load_locations()
 
@@ -554,7 +586,8 @@ class SnapshotService:
         """Normalize and persist locations list Excel file."""
         clean_df = self._normalize_locations_df(df)
         content = self._to_excel_bytes(clean_df)
-        self.storage.write_bytes(self.settings.s3_locations_key, content)
+        with self._write_guard():
+            self.storage.write_bytes(self.settings.s3_locations_key, content)
 
     def _update_master_name(self, person_id: str, full_name: str) -> None:
         """Sync updated name from snapshot back into master list."""

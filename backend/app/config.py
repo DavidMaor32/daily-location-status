@@ -218,7 +218,11 @@ class Settings:
             config_file_path=config_path,
             app_name=_parse_string(_yaml_get(config_data, "app.name"), "Daily Status Manager API"),
             environment=_parse_string(_yaml_get(config_data, "app.environment"), "development"),
-            storage_mode=_parse_string(_yaml_get(config_data, "storage.mode"), "local").lower(),
+            storage_mode=_parse_choice(
+                _yaml_get(config_data, "storage.mode"),
+                "local",
+                {"local", "s3", "local_and_s3", "dual", "hybrid"},
+            ),
             aws_access_key_id=_parse_optional_string(_yaml_get(config_data, "aws.access_key_id")),
             aws_secret_access_key=_parse_optional_string(_yaml_get(config_data, "aws.secret_access_key")),
             aws_session_token=_parse_optional_string(_yaml_get(config_data, "aws.session_token")),

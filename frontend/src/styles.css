@@ -53,14 +53,6 @@ body {
   gap: 16px;
 }
 
-.floating-save-btn {
-  position: fixed;
-  top: 14px;
-  left: 14px;
-  z-index: 40;
-  box-shadow: 0 6px 14px rgba(15, 70, 108, 0.2);
-}
-
 .header-card,
 .toolbar-card,
 .dates-card,
@@ -115,8 +107,16 @@ body {
 }
 
 .compact-filter-group {
-  min-width: 150px;
-  width: 180px;
+  min-width: 132px;
+  width: 132px;
+  max-width: 132px;
+}
+
+.compact-filter-group input,
+.compact-filter-group select {
+  min-height: 32px;
+  padding: 5px 8px;
+  font-size: 0.86rem;
 }
 
 .toolbar-card {
@@ -160,6 +160,10 @@ body {
 
 .location-remove-row .btn {
   white-space: nowrap;
+}
+
+.location-person-action-row {
+  margin-top: 8px;
 }
 
 .download-range-group {
@@ -433,11 +437,6 @@ textarea {
     font-size: 1.3rem;
   }
 
-  .floating-save-btn {
-    top: 10px;
-    left: 10px;
-  }
-
   .date-controls {
     width: 100%;
   }
@@ -452,6 +451,8 @@ textarea {
   }
 
   .compact-filter-group {
+    min-width: 100%;
     width: 100%;
+    max-width: 100%;
   }
 }
