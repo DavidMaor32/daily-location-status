@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from app.api.dependencies import parse_date, service_dep
+from app.api.dependencies import parse_date, require_write_access, service_dep
 from app.models import AvailableDatesResponse, SnapshotResponse
 from app.services.snapshot_service import SnapshotService
 
@@ -43,9 +43,9 @@ def get_available_dates(service: SnapshotService = Depends(service_dep)) -> Avai
 @router.post("/api/history/{snapshot_date}/restore-to-today", response_model=SnapshotResponse)
 def restore_history_to_today(
     snapshot_date: str,
+    _: None = Depends(require_write_access),
     service: SnapshotService = Depends(service_dep),
 ) -> SnapshotResponse:
     """Restore one historical date into today's snapshot."""
     parsed_date = parse_date(snapshot_date)
     return SnapshotResponse(**service.restore_snapshot_to_today(parsed_date))
-

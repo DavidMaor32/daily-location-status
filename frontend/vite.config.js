@@ -22,11 +22,13 @@ const frontendConfig = appConfig.frontend || {};
 const frontendApiBaseUrl = String(frontendConfig.api_base_url || "");
 const frontendDevPort = Number(frontendConfig.dev_server_port || 5173);
 const frontendDevProxyTarget = String(frontendConfig.dev_proxy_target || "http://localhost:8000");
+const frontendWriteApiKey = String(frontendConfig.write_api_key || "");
 
 export default defineConfig({
   plugins: [react()],
   define: {
     __API_BASE_URL__: JSON.stringify(frontendApiBaseUrl),
+    __WRITE_API_KEY__: JSON.stringify(frontendWriteApiKey),
   },
   server: {
     port: frontendDevPort,

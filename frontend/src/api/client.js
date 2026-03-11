@@ -1,5 +1,6 @@
 // Value is injected by Vite from config/app_config.yaml (frontend.api_base_url).
 const API_BASE_URL = __API_BASE_URL__ || "";
+const WRITE_API_KEY = __WRITE_API_KEY__ || "";
 
 // Extract filename from Content-Disposition header.
 function extractFilename(contentDisposition, fallbackName) {
@@ -22,9 +23,14 @@ function extractFilename(contentDisposition, fallbackName) {
 
 // Generic JSON request helper with centralized error handling.
 async function apiRequest(path, options = {}) {
+  const method = String(options.method || "GET").toUpperCase();
+  const isWriteMethod = ["POST", "PUT", "PATCH", "DELETE"].includes(method);
+  const authHeader = isWriteMethod && WRITE_API_KEY ? { "X-API-Key": WRITE_API_KEY } : {};
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
       "Content-Type": "application/json",
+      ...authHeader,
       ...(options.headers || {}),
     },
     ...options,
@@ -164,4 +170,3 @@ export function getTodayString() {
   const day = String(now.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
-

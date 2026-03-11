@@ -55,6 +55,13 @@ async def lifespan(_: FastAPI):
     settings = get_settings()
     startup_error = None
     logger.info("Using startup config file: %s", settings.config_file_path)
+    logger.info(
+        "Runtime storage mode=%s local_storage_dir=%s snapshots_prefix=%s s3_bucket=%s",
+        settings.storage_mode,
+        settings.local_storage_dir,
+        settings.s3_snapshots_prefix,
+        settings.s3_bucket_name or "-",
+    )
     try:
         service.initialize_today_snapshot()
         logger.info("Today's snapshot initialized successfully")

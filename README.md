@@ -17,6 +17,7 @@ Code comments and project documentation are in English.
 ## Security & Reliability
 
 - Secret loading from `.env` is supported.
+- Optional write protection is supported via `X-API-Key` (`security.write_api_key` / `WRITE_API_KEY`).
 - Global exception handling avoids leaking internal details.
 - Input validation is enforced across API and Telegram flow.
 - Local Excel writes are atomic (`temp` + replace).
@@ -70,14 +71,28 @@ Typical local values:
 - `storage.mode: "local"`
 - `storage.local_storage_dir: "./local_storage"`
 - `storage.seed_people_file: "./backend/data/sample_people.csv"`
+- `security.write_api_key: ""`
 - `frontend.api_base_url: ""`
 - `frontend.dev_proxy_target: "http://localhost:8000"`
 - `frontend.dev_server_port: 5173`
+- `frontend.write_api_key: ""`
 
 Optional `.env`:
 
 ```env
 TELEGRAM_BOT_TOKEN=YOUR_TELEGRAM_BOT_TOKEN
+WRITE_API_KEY=YOUR_STRONG_WRITE_KEY
+```
+
+If write protection is enabled, set one of these flows:
+
+- Browser app flow: set matching values in `security.write_api_key` and `frontend.write_api_key`.
+- API client flow: set `security.write_api_key` and send header manually.
+
+Manual header format:
+
+```http
+X-API-Key: YOUR_STRONG_WRITE_KEY
 ```
 
 ### 2) Run Backend

@@ -107,16 +107,23 @@ body {
 }
 
 .compact-filter-group {
-  min-width: 132px;
-  width: 132px;
-  max-width: 132px;
+  min-width: 118px;
+  width: 118px;
+  max-width: 118px;
 }
 
 .compact-filter-group input,
 .compact-filter-group select {
-  min-height: 32px;
-  padding: 5px 8px;
-  font-size: 0.86rem;
+  height: 28px;
+  min-height: 28px;
+  padding: 3px 8px;
+  font-size: 0.82rem;
+  border-radius: 8px;
+}
+
+.compact-filter-group label {
+  font-size: 0.8rem;
+  line-height: 1.1;
 }
 
 .toolbar-card {

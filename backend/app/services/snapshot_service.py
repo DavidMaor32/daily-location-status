@@ -324,6 +324,10 @@ class SnapshotService:
         with self._write_guard():
             master_df = self.load_master_people()
             existing_ids = set(master_df["person_id"].tolist())
+            location_value = self._normalize_location_option(payload.location)
+            if not location_value:
+                raise ValidationError("location cannot be empty")
+            self._validate_location_allowed(location_value, field_name="location")
 
             new_person_id = self._generate_person_id(existing_ids)
             master_df = pd.concat(
@@ -345,7 +349,7 @@ class SnapshotService:
                 person_id=new_person_id,
                 full_name=payload.full_name.strip(),
                 snapshot_date=today,
-                location=payload.location,
+                location=location_value,
                 daily_status=payload.daily_status,
                 self_location="",
                 self_daily_status="",
@@ -373,6 +377,28 @@ class SnapshotService:
             row_index = matches[0]
             for field_name, field_value in patch.items():
                 if field_value is not None:
+                    if field_name == "location":
+                        normalized_location = self._normalize_location_option(field_value)
+                        if not normalized_location:
+                            raise ValidationError("location cannot be empty")
+                        self._validate_location_allowed(
+                            normalized_location,
+                            field_name="location",
+                        )
+                        snapshot_df.at[row_index, field_name] = normalized_location
+                        continue
+
+                    if field_name == "self_location":
+                        normalized_self_location = self._normalize_location_option(field_value)
+                        if not normalized_self_location:
+                            raise ValidationError("self_location cannot be empty")
+                        self._validate_location_allowed(
+                            normalized_self_location,
+                            field_name="self_location",
+                        )
+                        snapshot_df.at[row_index, field_name] = normalized_self_location
+                        continue
+
                     snapshot_df.at[row_index, field_name] = field_value
 
             snapshot_df.at[row_index, "last_updated"] = self._now_iso()
@@ -407,6 +433,7 @@ class SnapshotService:
                 raise ValidationError(
                     f"self_location must be at most {MAX_LOCATION_LENGTH} characters"
                 )
+            self._validate_location_allowed(location_value, field_name="self_location")
 
             status_value = self._normalize_required_daily_status(self_daily_status)
             snapshot_df.at[row_index, "self_location"] = location_value
@@ -865,6 +892,17 @@ class SnapshotService:
         if not cleaned or cleaned.lower() == "nan":
             return None
         return cleaned
+
+    def _validate_location_allowed(self, location_value: str, *, field_name: str) -> None:
+        """Validate location value against configured location options list."""
+        available_locations = set(self.get_locations())
+        if location_value in available_locations:
+            return
+
+        options_preview = ", ".join(sorted(available_locations))
+        raise ValidationError(
+            f"{field_name} must be one of configured locations: {options_preview}"
+        )
 
     def _normalize_daily_status(self, value: object) -> str:
         """Normalize daily status to known values with safe default."""

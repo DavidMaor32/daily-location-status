@@ -23,7 +23,14 @@ Example `.env`:
 
 ```env
 TELEGRAM_BOT_TOKEN=PUT_YOUR_TOKEN_HERE
+WRITE_API_KEY=PUT_STRONG_WRITE_KEY_HERE
 ```
+
+Optional write protection:
+
+1. Set `security.write_api_key` in `config/app_config.yaml`.
+2. If UI should perform write operations, also set matching `frontend.write_api_key`.
+3. If using API clients directly, send `X-API-Key` header.
 
 ## 3. What was added
 

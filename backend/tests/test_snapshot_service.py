@@ -39,6 +39,7 @@ def _build_settings(
         local_storage_dir=tmp_path / "storage",
         seed_people_file=seed_file,
         cors_origins=["http://localhost:5173"],
+        write_api_key=None,
         telegram_bot_enabled=False,
         telegram_bot_token=None,
         telegram_allowed_chat_ids=[],

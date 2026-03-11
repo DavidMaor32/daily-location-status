@@ -557,15 +557,6 @@ function App() {
             </button>
           </div>
 
-          <button
-            className="btn btn-primary"
-            onClick={handleDownloadDayFile}
-            disabled={loading || actionLoading || !selectedDate}
-            title="שמור קובץ Excel של התאריך הנבחר"
-          >
-            שמור אקסל
-          </button>
-
           {isReadOnly ? (
             <button
               className="btn btn-warning"

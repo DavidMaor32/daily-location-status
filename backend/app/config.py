@@ -196,6 +196,7 @@ class Settings:
     local_storage_dir: Path
     seed_people_file: Path
     cors_origins: list[str]
+    write_api_key: str | None
     telegram_bot_enabled: bool
     telegram_bot_token: str | None
     telegram_allowed_chat_ids: list[int]
@@ -254,6 +255,8 @@ class Settings:
                 BASE_DIR / "backend" / "data" / "sample_people.csv",
             ),
             cors_origins=cors_origins,
+            write_api_key=_parse_optional_string(os.getenv("WRITE_API_KEY"))
+            or _parse_optional_string(_yaml_get(config_data, "security.write_api_key")),
             telegram_bot_enabled=_parse_bool(
                 _yaml_get(config_data, "telegram.enabled", False),
                 default=False,

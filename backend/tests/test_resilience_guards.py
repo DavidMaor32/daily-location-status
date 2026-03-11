@@ -60,6 +60,7 @@ def _build_settings(tmp_path: Path, *, telegram_enabled: bool = True) -> Setting
         local_storage_dir=tmp_path / "storage",
         seed_people_file=tmp_path / "seed.csv",
         cors_origins=["http://localhost:5173"],
+        write_api_key=None,
         telegram_bot_enabled=telegram_enabled,
         telegram_bot_token="token-for-tests",
         telegram_allowed_chat_ids=[],
