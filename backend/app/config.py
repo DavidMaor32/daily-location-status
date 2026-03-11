@@ -138,6 +138,15 @@ def _parse_optional_string(raw_value: Any) -> str | None:
     return cleaned or None
 
 
+def _parse_choice(raw_value: Any, default: str, allowed: set[str]) -> str:
+    """Parse one string choice and validate against allowed values."""
+    candidate = _parse_string(raw_value, default).lower()
+    if candidate not in allowed:
+        allowed_list = ", ".join(sorted(allowed))
+        raise ValueError(f"Invalid config value '{candidate}'. Allowed values: {allowed_list}")
+    return candidate
+
+
 @dataclass
 class Settings:
     config_file_path: Path
@@ -152,6 +161,7 @@ class Settings:
     s3_snapshots_prefix: str
     s3_master_key: str
     s3_locations_key: str
+    snapshot_restore_policy: str
     local_storage_dir: Path
     seed_people_file: Path
     cors_origins: list[str]
@@ -193,6 +203,11 @@ class Settings:
             s3_locations_key=_parse_string(
                 _yaml_get(config_data, "storage.s3.locations_key"),
                 "master/locations.xlsx",
+            ),
+            snapshot_restore_policy=_parse_choice(
+                _yaml_get(config_data, "storage.snapshot_restore_policy"),
+                "exact_snapshot",
+                {"exact_snapshot", "master_only"},
             ),
             local_storage_dir=_resolve_path(
                 _parse_optional_string(_yaml_get(config_data, "storage.local_storage_dir")),

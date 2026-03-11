@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from io import BytesIO
 from pathlib import Path
@@ -40,6 +41,16 @@ VALID_SELF_DAILY_STATUS = {"תקין", "לא תקין"}
 DEFAULT_LOCATION = "בבית"
 DEFAULT_DAILY_STATUS = "לא הוזן"
 DEFAULT_LOCATION_OPTIONS = ["בבית", "מיקום 1", "מיקום 2", "מיקום 3", "מיקום 4", "מיקום 5"]
+
+
+@dataclass(frozen=True)
+class SnapshotCarryPolicy:
+    """Define which fields should be copied from source snapshot to target snapshot."""
+
+    carry_location: bool
+    carry_daily_status: bool
+    carry_notes: bool
+    carry_self_report: bool
 
 
 class SnapshotService:
@@ -241,17 +252,17 @@ class SnapshotService:
                     }
                 )
                 new_snapshot_rows.append(
-                    {
-                        "person_id": person_id,
-                        "full_name": full_name,
-                        "location": DEFAULT_LOCATION,
-                        "daily_status": DEFAULT_DAILY_STATUS,
-                        "self_location": "",
-                        "self_daily_status": "",
-                        "notes": "",
-                        "last_updated": now_value,
-                        "date": today.isoformat(),
-                    }
+                    self._build_snapshot_row(
+                        person_id=person_id,
+                        full_name=full_name,
+                        snapshot_date=today,
+                        location=DEFAULT_LOCATION,
+                        daily_status=DEFAULT_DAILY_STATUS,
+                        self_location="",
+                        self_daily_status="",
+                        notes="",
+                        last_updated=now_value,
+                    )
                 )
 
             if new_master_rows:
@@ -298,17 +309,16 @@ class SnapshotService:
             today = date.today()
             snapshot_df = self.load_snapshot(today, create_if_missing=True)
 
-            new_row = {
-                "person_id": new_person_id,
-                "full_name": payload.full_name.strip(),
-                "location": payload.location,
-                "daily_status": payload.daily_status,
-                "self_location": "",
-                "self_daily_status": "",
-                "notes": payload.notes,
-                "last_updated": self._now_iso(),
-                "date": today.isoformat(),
-            }
+            new_row = self._build_snapshot_row(
+                person_id=new_person_id,
+                full_name=payload.full_name.strip(),
+                snapshot_date=today,
+                location=payload.location,
+                daily_status=payload.daily_status,
+                self_location="",
+                self_daily_status="",
+                notes=payload.notes,
+            )
             snapshot_df = pd.concat([snapshot_df, pd.DataFrame([new_row], columns=SNAPSHOT_COLUMNS)], ignore_index=True)
             snapshot_df = self._normalize_snapshot_df(snapshot_df, today)
             self.save_snapshot(today, snapshot_df)
@@ -411,17 +421,32 @@ class SnapshotService:
                 return self.get_snapshot_for_date(today, create_if_missing=True)
 
             source_df = self.load_snapshot(source_date, create_if_missing=False)
-            master_df = self.load_master_people()
+            restore_policy = self.settings.snapshot_restore_policy
 
-            restored_df = self._build_snapshot_from_master(
-                master_df,
-                source_df,
-                today,
-                carry_self_report_fields=True,
-                carry_daily_status_from_source=True,
-            )
+            if restore_policy == "exact_snapshot":
+                # Restore exactly as historical day, including people removed from current master.
+                restored_df = self._build_snapshot_from_source_exact(source_df, today)
+            else:
+                # Restore only people currently active in master list.
+                master_df = self.load_master_people()
+                restored_df = self._build_snapshot_from_master(
+                    master_df,
+                    source_df,
+                    today,
+                    carry_policy=SnapshotCarryPolicy(
+                        carry_location=True,
+                        carry_daily_status=True,
+                        carry_notes=True,
+                        carry_self_report=True,
+                    ),
+                )
             self.save_snapshot(today, restored_df)
-            logger.info("Restored snapshot from %s into %s", source_date.isoformat(), today.isoformat())
+            logger.info(
+                "Restored snapshot from %s into %s (policy=%s)",
+                source_date.isoformat(),
+                today.isoformat(),
+                restore_policy,
+            )
             return self.get_snapshot_for_date(today, create_if_missing=False)
 
     def ensure_snapshot_for_date(self, snapshot_date: date) -> pd.DataFrame:
@@ -432,29 +457,20 @@ class SnapshotService:
                 return self.load_snapshot(snapshot_date, create_if_missing=False)
 
             master_df = self.ensure_master_people()
-            previous_date = self._latest_snapshot_before(snapshot_date)
 
-            if previous_date:
-                # First choice: bootstrap the day from latest historical snapshot.
-                logger.info("Creating %s snapshot based on previous day %s", snapshot_date, previous_date)
-                previous_df = self.load_snapshot(previous_date, create_if_missing=False)
-                new_snapshot = self._build_snapshot_from_master(
-                    master_df,
-                    previous_df,
-                    snapshot_date,
-                    carry_self_report_fields=False,
-                    carry_daily_status_from_source=False,
-                )
-            else:
-                # Fallback for first run: create from master list defaults.
-                logger.info("Creating first snapshot for %s from master list", snapshot_date)
-                new_snapshot = self._build_snapshot_from_master(
-                    master_df,
-                    None,
-                    snapshot_date,
-                    carry_self_report_fields=False,
-                    carry_daily_status_from_source=False,
-                )
+            # New working file is always bootstrapped from master people list only.
+            logger.info("Creating %s snapshot from master people list", snapshot_date)
+            new_snapshot = self._build_snapshot_from_master(
+                master_df,
+                None,
+                snapshot_date,
+                carry_policy=SnapshotCarryPolicy(
+                    carry_location=False,
+                    carry_daily_status=False,
+                    carry_notes=False,
+                    carry_self_report=False,
+                ),
+            )
 
             self.save_snapshot(snapshot_date, new_snapshot)
             return new_snapshot
@@ -544,20 +560,55 @@ class SnapshotService:
         master_df.at[matches[0], "full_name"] = full_name.strip()
         self.save_master_people(master_df)
 
+    def _build_snapshot_row(
+        self,
+        *,
+        person_id: str,
+        full_name: str,
+        snapshot_date: date,
+        location: str,
+        daily_status: str,
+        self_location: str = "",
+        self_daily_status: str = "",
+        notes: str = "",
+        last_updated: str | None = None,
+    ) -> dict:
+        """Build one normalized snapshot row dictionary."""
+        return {
+            "person_id": person_id,
+            "full_name": full_name.strip(),
+            "location": location,
+            "daily_status": daily_status,
+            "self_location": self_location,
+            "self_daily_status": self_daily_status,
+            "notes": notes,
+            "last_updated": last_updated or self._now_iso(),
+            "date": snapshot_date.isoformat(),
+        }
+
+    def _build_snapshot_from_source_exact(self, source_df: pd.DataFrame, snapshot_date: date) -> pd.DataFrame:
+        """
+        Build restored snapshot by cloning historical rows as-is.
+
+        This policy preserves exactly the people that existed on source date,
+        including people currently missing from master list.
+        """
+        source_copy = source_df.copy()
+        return self._normalize_snapshot_df(source_copy, snapshot_date)
+
     def _build_snapshot_from_master(
         self,
         master_df: pd.DataFrame,
         source_df: pd.DataFrame | None,
         snapshot_date: date,
-        carry_self_report_fields: bool,
-        carry_daily_status_from_source: bool,
+        carry_policy: SnapshotCarryPolicy,
     ) -> pd.DataFrame:
         """
         Create a full-day snapshot from master list and optional source snapshot.
 
-        carry_self_report_fields controls whether self-reported columns are copied from source.
-        carry_daily_status_from_source controls whether daily_status is copied from source.
-        When False, daily_status is reset to default ("לא הוזן") for the new day.
+        For day rollover we copy only the people list and reset daily fields to defaults.
+        For restore flows we can copy fields from historical source using carry_policy.
+        New daily files intentionally start with defaults so each day is a fresh XLSX.
         """
         source_by_id = {}
         if source_df is not None and not source_df.empty:
@@ -574,30 +625,38 @@ class SnapshotService:
 
             # Every daily file is a full snapshot, so each master person must exist once.
             rows.append(
-                {
-                    "person_id": person_id,
-                    "full_name": str(person["full_name"]).strip(),
-                    "location": self._normalize_location(source_row["location"] if source_row is not None else None),
-                    "daily_status": self._normalize_daily_status(
+                self._build_snapshot_row(
+                    person_id=person_id,
+                    full_name=str(person["full_name"]).strip(),
+                    snapshot_date=snapshot_date,
+                    location=self._normalize_location(
+                        source_row["location"]
+                        if (carry_policy.carry_location and source_row is not None)
+                        else DEFAULT_LOCATION
+                    ),
+                    daily_status=self._normalize_daily_status(
                         source_row["daily_status"]
-                        if (carry_daily_status_from_source and source_row is not None)
+                        if (carry_policy.carry_daily_status and source_row is not None)
                         else DEFAULT_DAILY_STATUS
                     ),
                     # Self-report fields are reset for a new day unless explicitly restored from history.
-                    "self_location": self._normalize_self_location(
+                    self_location=self._normalize_self_location(
                         source_row["self_location"]
-                        if (carry_self_report_fields and source_row is not None)
+                        if (carry_policy.carry_self_report and source_row is not None)
                         else ""
                     ),
-                    "self_daily_status": self._normalize_self_daily_status(
+                    self_daily_status=self._normalize_self_daily_status(
                         source_row["self_daily_status"]
-                        if (carry_self_report_fields and source_row is not None)
+                        if (carry_policy.carry_self_report and source_row is not None)
                         else ""
                     ),
-                    "notes": self._normalize_notes(source_row["notes"] if source_row is not None else ""),
-                    "last_updated": now_value,
-                    "date": snapshot_date.isoformat(),
-                }
+                    notes=self._normalize_notes(
+                        source_row["notes"]
+                        if (carry_policy.carry_notes and source_row is not None)
+                        else ""
+                    ),
+                    last_updated=now_value,
+                )
             )
 
         output = pd.DataFrame(rows, columns=SNAPSHOT_COLUMNS)
@@ -711,13 +770,6 @@ class SnapshotService:
             candidate = f"P-{uuid4().hex[:8]}"
             if candidate not in used_ids:
                 return candidate
-
-    def _latest_snapshot_before(self, target_date: date) -> date | None:
-        """Return the latest snapshot date older than target date."""
-        dates = [item for item in self.list_available_dates() if item < target_date]
-        if not dates:
-            return None
-        return max(dates)
 
     def _snapshot_key(self, snapshot_date: date) -> str:
         """Build storage key for snapshot file by date."""

@@ -22,7 +22,7 @@ storage:
   local_storage_dir: "./local_storage" # נתיב שמירה מקומי לקבצי Excel | דוגמה: "./local_storage"
 
   seed_people_file: "./backend/data/sample_people.csv" # קובץ התחלתי לאנשים (רק אם master לא קיים) | דוגמה: "./backend/data/sample_people.csv"
-
+  snapshot_restore_policy: "exact_snapshot" # restore policy: exact_snapshot / master_only
   s3:
     snapshots_prefix: "snapshots" # תיקיית snapshots בבאקט | דוגמה: "snapshots"
     master_key: "master/people_master.xlsx" # מפתח קובץ master של אנשים ב-S3 | דוגמה: "master/people_master.xlsx"

@@ -8,6 +8,8 @@
 - המערכת לא משתמשת ב-`.env`.
 - כל יום נשמר כ-snapshot נפרד.
 - רשימת האנשים נשמרת ב-master כדי שלא תצטרך להזין אותם מחדש כל יום.
+- בתחילת יום חדש נוצרת אוטומטית קובץ XLSX יומי חדש, שמעתיק מה-master את רשימת האנשים בלבד.
+- בקובץ היומי החדש שדות העבודה מאותחלים לערכי ברירת מחדל (כדי להתחיל עבודה נקייה ליום החדש).
 
 ## מה המערכת יודעת לעשות
 
@@ -94,6 +96,9 @@ npm run dev
 - `storage.mode` - מצב שמירה: `local` / `s3` / `local_and_s3`.
 - `storage.local_storage_dir` - נתיב לשמירה מקומית של קבצי Excel.
 - `storage.seed_people_file` - קובץ CSV התחלתי ליצירת master בפעם הראשונה.
+- `storage.snapshot_restore_policy` - מדיניות שחזור היסטוריה ליום נוכחי:
+  - `exact_snapshot`: שחזור מדויק כפי שהיה ביום ההיסטורי (כולל אנשים שכבר לא ב-master).
+  - `master_only`: שחזור רק לאנשים הפעילים כרגע ב-master.
 
 #### `storage.s3`
 
@@ -132,6 +137,12 @@ npm run dev
 - `local_storage/master/people_master.xlsx`
 - `local_storage/master/locations.xlsx`
 - `local_storage/snapshots/YYYY-MM-DD.xlsx`
+
+התנהגות יצירת snapshot יומי חדש:
+
+- אם אין עדיין קובץ לתאריך הנוכחי, המערכת יוצרת אותו אוטומטית.
+- הקובץ החדש נבנה לפי רשימת האנשים ב-master.
+- ערכי העבודה היומיים מאותחלים (למשל `daily_status` מתחיל כ-`לא הוזן`).
 
 ### קובץ people_master לדוגמה
 
@@ -191,6 +202,27 @@ cd ..\frontend
 npm run build
 ```
 
+## בדיקות אוטומטיות
+
+נוספו בדיקות business logic עבור `SnapshotService`:
+
+- יצירת snapshot ליום חדש עם איפוס שדות יומיים
+- שחזור `exact_snapshot` כולל אנשים שנמחקו מה-master
+- שחזור `master_only` עם אנשים פעילים בלבד
+- הוספת רשימת שמות התחלתית עם מניעת כפילויות
+
+הרצה:
+
+```powershell
+cd backend
+.\.venv\Scripts\Activate.ps1
+pytest -q
+```
+
+קובץ בדיקות:
+
+- `backend/tests/test_snapshot_service.py`
+
 ## תקלות נפוצות
 
 ### `Seed people file was not found`
@@ -218,3 +250,15 @@ npm run build
    - `pip install -r backend/requirements.txt`
    - `npm install` בתוך `frontend`
 4. אם צריך היסטוריה קיימת, מעתיקים גם את `local_storage`.
+
+## Scale לעומסים גבוהים
+
+ל-MVP העבודה עם Excel נכונה ופשוטה. אם צפוי עומס גבוה (הרבה עדכונים במקביל), מומלץ לעבור ל:
+
+1. DB תפעולי (`SQLite`/`Postgres`) לכתיבה וקריאה שוטפת.
+2. יצוא קבצי XLSX כ-snapshot יומי (ולא כמקור הנתונים הראשי בזמן אמת).
+3. השארת `people_master.xlsx` כיצוא/גיבוי, לא כמנוע כתיבה תפעולי.
+
+תוכנית מעבר מפורטת:
+
+- `DB_SCALE_PLAN.md`

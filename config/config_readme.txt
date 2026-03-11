@@ -54,6 +54,13 @@ storage.seed_people_file
 - מה זה: קובץ CSV התחלתי של אנשים. נצרך רק אם קובץ ה-master עדיין לא קיים.
 - דוגמה: "./backend/data/sample_people.csv"
 
+storage.snapshot_restore_policy
+- מה זה: מדיניות שחזור יום היסטורי לתוך היום הנוכחי.
+- ערכים אפשריים:
+  - exact_snapshot: שחזור מדויק כפי שהיה ביום ההיסטורי (כולל אנשים שכבר לא ב-master).
+  - master_only: שחזור רק לאנשים הפעילים כרגע ב-master.
+- דוגמה: "exact_snapshot"
+
 storage.s3.snapshots_prefix
 - מה זה: Prefix (תיקייה לוגית) של קבצי snapshots יומיים ב-S3.
 - דוגמה: "snapshots"

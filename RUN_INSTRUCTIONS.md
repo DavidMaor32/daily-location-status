@@ -21,6 +21,7 @@
 ערכים מומלצים לפיתוח מקומי:
 
 - `storage.mode: "local"`
+- `storage.snapshot_restore_policy: "exact_snapshot"`
 - `frontend.api_base_url: ""`
 - `frontend.dev_server_port: 5173`
 - `frontend.dev_proxy_target: "http://localhost:8000"`
