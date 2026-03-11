@@ -1,4 +1,4 @@
-﻿import { getLocationChipClass } from "../constants/locations";
+import { getLocationChipClass } from "../constants/locations";
 
 // Convert backend ISO timestamp into friendly Hebrew date-time.
 function formatTimestamp(value) {
@@ -25,6 +25,8 @@ function PersonTable({
   people,
   locationOptions,
   readOnly,
+  telegramActive,
+  telegramMessage,
   onQuickUpdate,
   onEdit,
 }) {
@@ -36,6 +38,18 @@ function PersonTable({
             <th>שם מלא</th>
             <th>מיקום נוכחי</th>
             <th>סטטוס יומי</th>
+            <th>
+              מיקום בהזנה עצמאית
+              {!telegramActive ? (
+                <div className="column-note">{telegramMessage}</div>
+              ) : null}
+            </th>
+            <th>
+              סטטוס בהזנה עצמאית
+              {!telegramActive ? (
+                <div className="column-note">{telegramMessage}</div>
+              ) : null}
+            </th>
             <th>הערות</th>
             <th>עודכן לאחרונה</th>
             <th>פעולות</th>
@@ -44,7 +58,7 @@ function PersonTable({
         <tbody>
           {people.length === 0 ? (
             <tr>
-              <td colSpan={6} className="empty-row">
+              <td colSpan={8} className="empty-row">
                 לא נמצאו נתונים לתצוגה
               </td>
             </tr>
@@ -104,6 +118,30 @@ function PersonTable({
                       </button>
                     </div>
                   ) : null}
+                </td>
+                <td>
+                  {person.self_location ? (
+                    <span className={`status-chip ${getLocationChipClass(person.self_location)}`}>
+                      {person.self_location}
+                    </span>
+                  ) : (
+                    telegramActive ? "-" : ""
+                  )}
+                </td>
+                <td>
+                  {person.self_daily_status ? (
+                    <span
+                      className={`status-chip ${
+                        person.self_daily_status === "תקין"
+                          ? "chip-status-ok"
+                          : "chip-status-bad"
+                      }`}
+                    >
+                      {person.self_daily_status}
+                    </span>
+                  ) : (
+                    telegramActive ? "-" : ""
+                  )}
                 </td>
                 <td>{person.notes || "-"}</td>
                 <td>{formatTimestamp(person.last_updated)}</td>

@@ -1,0 +1,44 @@
+# ------------------------------------------------------------
+# קובץ קונפיגורציה ראשי של המערכת (נטען בתחילת עליית ה-Backend)
+# כל ההגדרות של המערכת מרוכזות כאן (YAML בלבד)
+# ------------------------------------------------------------
+
+app:
+  name: "Daily Status Manager API" # שם המערכת בלוגים/זיהוי שירות | דוגמה: "Daily Status Manager API"
+  environment: "development" # סביבת עבודה | דוגמה: "development" / "production"
+
+cors:
+  origins:
+    - "http://localhost:5173" # כתובת Frontend מורשית לפניות API | דוגמה: "http://localhost:5173"
+
+frontend:
+  api_base_url: "" # בסיס URL של ה-API בדפדפן (ריק = שימוש ב-/api יחסי) | דוגמה: ""
+  dev_server_port: 5173 # פורט של שרת ה-Frontend (Vite) | דוגמה: 5173
+  dev_proxy_target: "http://localhost:8000" # יעד proxy של /api בזמן פיתוח | דוגמה: "http://localhost:8000"
+
+storage:
+  mode: "local" # מצב שמירה: local / s3 / local_and_s3 | דוגמה: "local_and_s3"
+
+  local_storage_dir: "./local_storage" # נתיב שמירה מקומי לקבצי Excel | דוגמה: "./local_storage"
+
+  seed_people_file: "./backend/data/sample_people.csv" # קובץ התחלתי לאנשים (רק אם master לא קיים) | דוגמה: "./backend/data/sample_people.csv"
+
+  s3:
+    snapshots_prefix: "snapshots" # תיקיית snapshots בבאקט | דוגמה: "snapshots"
+    master_key: "master/people_master.xlsx" # מפתח קובץ master של אנשים ב-S3 | דוגמה: "master/people_master.xlsx"
+    locations_key: "master/locations.xlsx" # מפתח קובץ מיקומים ב-S3 | דוגמה: "master/locations.xlsx"
+    bucket_name: "" # שם הבאקט ב-S3 (נדרש ב-s3/local_and_s3) | דוגמה: "my-status-bucket"
+
+aws:
+  access_key_id: "" # AWS Access Key ID | דוגמה: "AKIA..."
+  secret_access_key: "" # AWS Secret Access Key | דוגמה: "xxxxxxxxxxxx"
+  session_token: "" # טוקן זמני (אופציונלי, לרוב IAM זמני) | דוגמה: "IQoJb3Jp..."
+  region: "us-east-1" # אזור AWS לחיבור S3 | דוגמה: "us-east-1"
+
+telegram:
+  enabled: false # האם להפעיל בוט טלגרם | דוגמה: true
+  bot_token: "" # טוקן בוט מ-BotFather | דוגמה: "123456:ABC-DEF..."
+  allowed_chat_ids: [] # רשימת chat_id מורשים (ריק = ללא הגבלה) | דוגמה: [123456789, 987654321]
+  allowed_remote_names: [] # רשימת שמות שמורשים להזנה מרחוק (ריק = כל השמות) | דוגמה: ["יוסי כהן", "מיכל לוי"]
+  poll_timeout_seconds: 25 # timeout ל-polling ל-Telegram | דוגמה: 25
+  poll_retry_seconds: 3 # השהייה בין ניסיונות אחרי שגיאה | דוגמה: 3

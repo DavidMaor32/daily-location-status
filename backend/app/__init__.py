@@ -1,1 +1,1 @@
-﻿"""FastAPI application package for daily people status management."""
+"""FastAPI application package for daily people status management."""

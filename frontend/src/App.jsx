@@ -1,14 +1,16 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   addPerson,
   createLocation,
+  deleteLocation,
   downloadDaySnapshot,
   downloadRangeSnapshots,
   deletePerson,
   fetchAvailableDates,
   fetchLocations,
   fetchSnapshotByDate,
+  fetchSystemStatus,
   fetchTodaySnapshot,
   getTodayString,
   quickUpdatePerson,
@@ -23,6 +25,28 @@ import {
   uniqueLocations,
 } from "./constants/locations";
 
+const AUTO_REFRESH_MS = 5000;
+const DEFAULT_SYSTEM_STATUS = {
+  telegram_enabled: false,
+  telegram_configured: false,
+  telegram_running: false,
+  telegram_healthy: false,
+  telegram_active: false,
+  telegram_message: "בוט טלגרם לא פעיל",
+  telegram_last_error: null,
+};
+
+// Normalize backend system status payload so UI stays stable if fields are missing.
+function normalizeSystemStatus(payload) {
+  return {
+    ...DEFAULT_SYSTEM_STATUS,
+    ...(payload || {}),
+    telegram_active: Boolean(payload?.telegram_active),
+    telegram_message:
+      payload?.telegram_message || DEFAULT_SYSTEM_STATUS.telegram_message,
+  };
+}
+
 // Main page component for daily status and location management.
 function App() {
   const todayString = getTodayString();
@@ -34,6 +58,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState("");
+  const [systemStatus, setSystemStatus] = useState(DEFAULT_SYSTEM_STATUS);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [locationFilter, setLocationFilter] = useState("all");
@@ -43,6 +68,7 @@ function App() {
     DEFAULT_LOCATION_OPTIONS
   );
   const [newLocationName, setNewLocationName] = useState("");
+  const [locationToDelete, setLocationToDelete] = useState("");
   const [downloadFromDate, setDownloadFromDate] = useState(todayString);
   const [downloadToDate, setDownloadToDate] = useState(todayString);
 
@@ -62,6 +88,11 @@ function App() {
       ...locationsFromSnapshot,
     ]);
   }, [locationOptions, snapshot.people]);
+
+  // "בית" הוא מיקום ברירת מחדל חובה ולכן לא מוצג ברשימת מחיקה.
+  const deletableLocationOptions = useMemo(() => {
+    return locationOptions.filter((location) => location !== "בבית");
+  }, [locationOptions]);
 
   // Build filtered and sorted table rows based on search/filters.
   const filteredPeople = useMemo(() => {
@@ -93,26 +124,60 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Keep selected delete-location value valid after list refresh.
+  useEffect(() => {
+    if (deletableLocationOptions.length === 0) {
+      setLocationToDelete("");
+      return;
+    }
+    if (!deletableLocationOptions.includes(locationToDelete)) {
+      setLocationToDelete(deletableLocationOptions[0]);
+    }
+  }, [deletableLocationOptions, locationToDelete]);
+
+  // Auto-refresh today's table so Telegram/self updates appear quickly in UI.
+  useEffect(() => {
+    if (selectedDate !== todayString || !systemStatus.telegram_active) {
+      return undefined;
+    }
+
+    const timerId = window.setInterval(async () => {
+      try {
+        const liveSnapshot = await fetchTodaySnapshot();
+        setSnapshot((current) =>
+          current.date === todayString ? liveSnapshot : current
+        );
+      } catch {
+        // Ignore periodic refresh failures to avoid noisy UI interruptions.
+      }
+    }, AUTO_REFRESH_MS);
+
+    return () => window.clearInterval(timerId);
+  }, [selectedDate, todayString, systemStatus.telegram_active]);
+
   // Load today's snapshot, available historical dates, and locations list.
   async function initialize() {
     setLoading(true);
     setError("");
     try {
-      const [todaySnapshot, datesResponse, locationsResponse] = await Promise.all([
+      const [
+        todaySnapshot,
+        datesResponse,
+        locationsResponse,
+        systemStatusResponse,
+      ] = await Promise.all([
         fetchTodaySnapshot(),
         fetchAvailableDates(),
         fetchLocations(),
+        fetchSystemStatus().catch(() => DEFAULT_SYSTEM_STATUS),
       ]);
       setSnapshot(todaySnapshot);
       setSelectedDate(todaySnapshot.date);
       setAvailableDates(datesResponse.dates || []);
-      setLocationOptions(
-        uniqueLocations([
-          ...DEFAULT_LOCATION_OPTIONS,
-          ...(locationsResponse.locations || []),
-        ])
-      );
+      setSystemStatus(normalizeSystemStatus(systemStatusResponse));
+      applyLocationOptions(locationsResponse.locations || []);
     } catch (err) {
+      setSystemStatus(DEFAULT_SYSTEM_STATUS);
       setError(err.message || "טעינת הנתונים נכשלה");
     } finally {
       setLoading(false);
@@ -125,18 +190,31 @@ function App() {
     setAvailableDates(datesResponse.dates || []);
   }
 
+  // Keep one canonical way to merge locations from backend with defaults.
+  function applyLocationOptions(apiLocations) {
+    setLocationOptions(
+      uniqueLocations([
+        ...DEFAULT_LOCATION_OPTIONS,
+        ...(apiLocations || []),
+      ])
+    );
+  }
+
   // Load one date (today or historical) and refresh date badges.
   async function loadSelectedDate(dateValue) {
     setLoading(true);
     setError("");
 
     try {
-      const payload =
+      const [payload, systemStatusResponse] = await Promise.all([
         dateValue === todayString
-          ? await fetchTodaySnapshot()
-          : await fetchSnapshotByDate(dateValue);
+          ? fetchTodaySnapshot()
+          : fetchSnapshotByDate(dateValue),
+        fetchSystemStatus().catch(() => systemStatus),
+      ]);
       setSnapshot(payload);
       setSelectedDate(payload.date);
+      setSystemStatus(normalizeSystemStatus(systemStatusResponse));
       await refreshDates();
     } catch (err) {
       setError(err.message || "לא ניתן לטעון את התאריך המבוקש");
@@ -236,15 +314,40 @@ function App() {
 
     try {
       const response = await createLocation(normalized);
-      setLocationOptions(
-        uniqueLocations([
-          ...DEFAULT_LOCATION_OPTIONS,
-          ...(response.locations || []),
-        ])
-      );
+      applyLocationOptions(response.locations || []);
       setNewLocationName("");
     } catch (err) {
       setError(err.message || "הוספת מיקום נכשלה");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  // Delete an existing location option from managed list.
+  async function handleDeleteLocation() {
+    const normalized = normalizeLocationName(locationToDelete);
+    if (!normalized) {
+      setError("יש לבחור מיקום למחיקה");
+      return;
+    }
+
+    const approved = window.confirm(`למחוק את המיקום "${normalized}"?`);
+    if (!approved) {
+      return;
+    }
+
+    setActionLoading(true);
+    setError("");
+
+    try {
+      const response = await deleteLocation(normalized);
+      applyLocationOptions(response.locations || []);
+      setLocationToDelete("");
+      if (locationFilter === normalized) {
+        setLocationFilter("all");
+      }
+    } catch (err) {
+      setError(err.message || "מחיקת מיקום נכשלה");
     } finally {
       setActionLoading(false);
     }
@@ -347,6 +450,13 @@ function App() {
         <div>
           <h1>ניהול סטטוס יומי ומיקום</h1>
           <p className="muted-text">מעקב יומי לפי snapshot לכל תאריך</p>
+          {!isReadOnly ? (
+            <p className="muted-text auto-refresh-note">
+              {systemStatus.telegram_active
+                ? "עדכון אוטומטי פעיל כל 5 שניות"
+                : "עדכון אוטומטי כבוי - בוט טלגרם לא פעיל"}
+            </p>
+          ) : null}
         </div>
 
         <div className="header-actions">
@@ -455,6 +565,34 @@ function App() {
               הוסף
             </button>
           </div>
+          <div className="location-remove-row">
+            <select
+              value={locationToDelete}
+              onChange={(event) => setLocationToDelete(event.target.value)}
+              disabled={deletableLocationOptions.length === 0 || actionLoading}
+            >
+              {deletableLocationOptions.length === 0 ? (
+                <option value="">אין מיקומים למחיקה</option>
+              ) : (
+                deletableLocationOptions.map((location) => (
+                  <option key={location} value={location}>
+                    {location}
+                  </option>
+                ))
+              )}
+            </select>
+            <button
+              className="btn btn-danger"
+              onClick={handleDeleteLocation}
+              disabled={
+                actionLoading ||
+                deletableLocationOptions.length === 0 ||
+                !locationToDelete
+              }
+            >
+              מחק מיקום
+            </button>
+          </div>
         </div>
 
         <div className="filter-group download-range-group">
@@ -521,6 +659,8 @@ function App() {
             people={filteredPeople}
             locationOptions={effectiveLocationOptions}
             readOnly={isReadOnly || actionLoading}
+            telegramActive={systemStatus.telegram_active}
+            telegramMessage={systemStatus.telegram_message}
             onQuickUpdate={handleQuickUpdate}
             onEdit={openEditModal}
           />

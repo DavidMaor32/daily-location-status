@@ -1,39 +1,39 @@
-# מערכת WEB לניהול סטטוס יומי ומיקום
+﻿# מערכת ניהול סטטוס יומי ומיקום (FastAPI + React)
 
-אפליקציית **FastAPI + React** לניהול אנשים, מיקום יומי, סטטוס יומי והיסטוריה מלאה בקבצי **Excel (XLSX)**.
+מערכת אינטרנטית לניהול אנשים, מיקומים וסטטוס יומי, עם שמירת היסטוריה בקבצי Excel (`.xlsx`).
 
-## מה המערכת עושה
+## עיקרון קונפיגורציה
 
-- מציגה טבלה של כל האנשים בזמן אמת.
-- מאפשרת עדכון מהיר של מיקום וסטטוס יומי.
-- שומרת snapshot יומי מלא לכל תאריך.
-- מאפשרת צפייה בהיסטוריה לפי יום.
-- מייצאת קובץ Excel של יום בודד או ZIP של טווח תאריכים.
-- תומכת בשמירה:
-  - לוקאלית
-  - ל-S3
-  - במצב כפול: לוקאלי + S3
+כל ההגדרות מוגדרות רק בקובץ:
 
----
+- `config/app_config.yaml`
 
-## הפעלה מהירה (Windows / PowerShell)
+המערכת לא משתמשת ב-`.env`.
 
-### 1) דרישות מקדימות
+## דרישות
 
-- Python 3.9+
-- Node.js 18+
+- Python `3.9+`
+- Node.js `18+`
 - npm
 
-### 2) יצירת קבצי סביבה
+## הרצה
 
-מהשורש של הפרויקט:
+### 1) הגדרות
 
-```powershell
-Copy-Item .env.example .env
-Copy-Item frontend\.env.example frontend\.env
-```
+ערוך את הקובץ:
 
-### 3) הרצת Backend
+- `config/app_config.yaml`
+
+שדות חשובים להפעלה מקומית:
+
+- `storage.mode: "local"`
+- `storage.local_storage_dir: "./local_storage"`
+- `storage.seed_people_file: "./backend/data/sample_people.csv"`
+- `frontend.api_base_url: ""`
+- `frontend.dev_proxy_target: "http://localhost:8000"`
+- `frontend.dev_server_port: 5173`
+
+### 2) Backend
 
 ```powershell
 cd backend
@@ -45,10 +45,11 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 בדיקת תקינות:
 
-- פתח בדפדפן: `http://localhost:8000/api/health`
-- תשובה צפויה: `{"status":"ok"}`
+- `http://localhost:8000/api/health`
 
-### 4) הרצת Frontend (טרמינל נוסף)
+### 3) Frontend
+
+בטרמינל נוסף:
 
 ```powershell
 cd frontend
@@ -56,139 +57,91 @@ npm install
 npm run dev
 ```
 
-### 5) כניסה למערכת
+כניסה לאתר:
 
-- Frontend: `http://localhost:5173`
-
----
+- `http://localhost:5173`
 
 ## מצבי שמירה
 
-`STORAGE_MODE` בקובץ `.env` שולט איפה הנתונים נשמרים:
+- `local` - שמירה מקומית בלבד
+- `s3` - שמירה ל-S3 בלבד
+- `local_and_s3` - שמירה מקומית + שכפול ל-S3
 
-- `local` - שמירה לוקאלית בלבד (ברירת מחדל).
-- `s3` - שמירה ל-S3 בלבד.
-- `local_and_s3` (או `dual` / `hybrid`) - שמירה לוקאלית + שכפול ל-S3.
+הגדרות S3 נמצאות תחת:
 
----
+- `storage.s3.*`
+- `aws.*`
 
-## מצב שמירה כפולה (מומלץ לגיבוי)
+## בוט טלגרם (אופציונלי)
 
-ב־`.env` הגדר:
+הגדרות תחת:
 
-```env
-STORAGE_MODE=local_and_s3
-LOCAL_STORAGE_DIR=./local_storage
+- `telegram.enabled`
+- `telegram.bot_token`
+- `telegram.allowed_chat_ids`
+- `telegram.allowed_remote_names`
 
-AWS_ACCESS_KEY_ID=your_access_key
-AWS_SECRET_ACCESS_KEY=your_secret_key
-AWS_REGION=us-east-1
-S3_BUCKET_NAME=your_bucket_name
+אם הבוט לא פעיל, האתר ממשיך לעבוד רגיל ועמודות הזנה עצמאית נשארות ריקות.
 
-S3_SNAPSHOTS_PREFIX=snapshots
-S3_MASTER_KEY=master/people_master.xlsx
-S3_LOCATIONS_KEY=master/locations.xlsx
-```
+## קבצי נתונים (Excel)
 
-איך זה עובד:
-
-- כתיבה: קודם ללוקאלי, ואז שכפול ל-S3.
-- קריאה: קודם מלוקאלי; אם חסר קובץ, יש fallback ל-S3.
-- אם S3 לא זמין, המערכת ממשיכה לעבוד לוקאלית.
-
-> אחרי שינוי `.env` צריך לבצע restart ל-Backend.
-
----
-
-## איפה הקבצים נשמרים
-
-במצב `local` או `local_and_s3`:
-
-- `local_storage/master/people_master.xlsx` - רשימת אנשים (Master).
-- `local_storage/master/locations.xlsx` - רשימת מיקומים.
-- `local_storage/snapshots/YYYY-MM-DD.xlsx` - snapshot יומי מלא.
-
-פורמט שם קובץ יומי: `2026-03-11.xlsx`
-
----
-
-## ייצוא קבצים
-
-- הורדת יום בודד (XLSX):
-  - `GET /api/export/day/{YYYY-MM-DD}`
-- הורדת טווח תאריכים (ZIP עם קבצי XLSX):
-  - `GET /api/export/range?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD`
-
----
+- `local_storage/master/people_master.xlsx`
+- `local_storage/master/locations.xlsx`
+- `local_storage/snapshots/YYYY-MM-DD.xlsx`
 
 ## API מרכזי
 
 - `GET /api/health`
+- `GET /api/system/status`
 - `GET /api/snapshot/today`
 - `GET /api/snapshot/{YYYY-MM-DD}`
 - `GET /api/history/dates`
 - `POST /api/history/{YYYY-MM-DD}/restore-to-today`
 - `GET /api/locations`
 - `POST /api/locations`
+- `DELETE /api/locations/{location_name}`
 - `POST /api/people`
 - `PATCH /api/people/{person_id}`
 - `PUT /api/people/{person_id}`
 - `DELETE /api/people/{person_id}`
+- `POST /api/self-report`
+- `GET /api/export/day/{YYYY-MM-DD}`
+- `GET /api/export/range?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD`
 
----
+## בדיקות מהירות
 
-## תקלות נפוצות ופתרון
+```powershell
+cd backend
+.\.venv\Scripts\python.exe -m compileall app
 
-### 1) `Seed people file was not found`
-
-בדוק שב־`.env` מוגדר:
-
-```env
-SEED_PEOPLE_FILE=./backend/data/sample_people.csv
+cd ..\frontend
+npm run build
 ```
 
-### 2) Frontend לא מתחבר ל-Backend (CORS / Network)
+## תקלות נפוצות
 
-בדוק:
+### Seed people file was not found
 
-```env
-CORS_ORIGINS=http://localhost:5173
-VITE_API_BASE_URL=http://localhost:8000
-```
+בדוק ב-`config/app_config.yaml`:
 
-### 3) שיניתי `.env` ולא קרה כלום
+- `storage.seed_people_file: "./backend/data/sample_people.csv"`
 
-יש להפעיל מחדש את שרת ה-Backend (`uvicorn`).
+### Frontend לא מתחבר ל-Backend
 
-### 4) מצב כפול ו-S3 נכשל
+בדוק ב-`config/app_config.yaml`:
 
-ב־`local_and_s3` הלוקאלי הוא הראשי, לכן הנתונים עדיין יישמרו לוקאלית גם אם S3 נכשל זמנית.
+- `frontend.api_base_url: ""`
+- `frontend.dev_proxy_target: "http://localhost:8000"`
 
----
+### שיניתי קונפיגורציה ולא השתנה
+
+אחרי שינוי `config/app_config.yaml` יש לבצע restart גם ל-Backend וגם ל-Frontend.
 
 ## העברה למחשב אחר
 
-כדי להעביר את המערכת למחשב חדש:
-
-1. העתק את כל תיקיית הפרויקט.
-2. העתק/צור `.env` ו-`frontend/.env`.
-3. הרץ מחדש:
-   - Backend: `pip install -r backend/requirements.txt`
-   - Frontend: `npm install` בתוך `frontend`
-4. אם חשוב לשמור היסטוריה קיימת, העתק גם את תיקיית `local_storage`.
-
----
-
-## מבנה תיקיות עיקרי
-
-```text
-app/
-├─ backend/
-│  ├─ app/
-│  ├─ data/
-│  └─ requirements.txt
-├─ frontend/
-├─ local_storage/
-├─ .env.example
-└─ README.md
-```
+1. מעתיקים את כל תיקיית הפרויקט.
+2. מעדכנים רק את `config/app_config.yaml` לפי המחשב החדש.
+3. מתקינים תלות מחדש:
+   - `pip install -r backend/requirements.txt`
+   - `npm install` בתוך `frontend`
+4. אם צריך היסטוריה קיימת, מעתיקים גם את `local_storage`.

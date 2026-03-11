@@ -1,0 +1,566 @@
+from __future__ import annotations
+
+import json
+import logging
+import threading
+from collections import Counter
+from urllib.error import URLError
+from urllib.request import Request, urlopen
+
+from app.config import Settings
+from app.exceptions import AppError, ValidationError
+from app.services.snapshot_service import SnapshotService
+
+
+logger = logging.getLogger(__name__)
+
+STATE_WAITING_NAME = "waiting_name"
+STATE_WAITING_LOCATION = "waiting_location"
+STATE_WAITING_STATUS = "waiting_status"
+STATUS_OPTIONS = ("תקין", "לא תקין")
+
+
+class TelegramBotService:
+    """Telegram long-polling worker with conversational self-report flow."""
+
+    def __init__(self, settings: Settings, snapshot_service: SnapshotService) -> None:
+        """Store runtime settings, shared snapshot service, and worker state."""
+        self.settings = settings
+        self.snapshot_service = snapshot_service
+        self._stop_event = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._state_lock = threading.Lock()
+        self._conversation_lock = threading.Lock()
+        self._offset = 0
+        self._bot_token = (settings.telegram_bot_token or "").strip()
+        self._allowed_chat_ids = set(settings.telegram_allowed_chat_ids)
+        self._allowed_remote_name_keys = {
+            self._normalize_key(name)
+            for name in settings.telegram_allowed_remote_names
+            if name.strip()
+        }
+        self._healthy = False
+        self._last_error: str | None = None
+        self._conversation_by_chat: dict[int, dict] = {}
+
+    def start(self) -> None:
+        """Start background polling thread if Telegram integration is enabled."""
+        if not self.settings.telegram_bot_enabled:
+            self._set_health(False, None)
+            logger.info("Telegram bot service is disabled by configuration")
+            return
+
+        if not self._bot_token:
+            self._set_health(False, "TELEGRAM_BOT_TOKEN is missing")
+            logger.warning("Telegram bot is enabled but TELEGRAM_BOT_TOKEN is missing")
+            return
+        if self._thread and self._thread.is_alive():
+            return
+
+        self._stop_event.clear()
+        self._set_health(True, None)
+        self._thread = threading.Thread(
+            target=self._run_poll_loop,
+            daemon=True,
+            name="telegram-bot-poller",
+        )
+        self._thread.start()
+        logger.info("Telegram bot polling started")
+
+    def stop(self) -> None:
+        """Stop polling thread gracefully during application shutdown."""
+        self._stop_event.set()
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=self.settings.telegram_poll_timeout_seconds + 2)
+        self._set_health(False, self._last_error)
+        logger.info("Telegram bot polling stopped")
+
+    def _is_enabled(self) -> bool:
+        """Return True only if feature flag and bot token are configured."""
+        return self.settings.telegram_bot_enabled and bool(self._bot_token)
+
+    def get_runtime_status(self) -> dict:
+        """Return runtime status used by frontend to decide auto-refresh behavior."""
+        with self._state_lock:
+            running = bool(self._thread and self._thread.is_alive())
+            healthy = bool(self._healthy)
+            last_error = self._last_error
+
+        configured = bool(self._bot_token)
+        enabled = self.settings.telegram_bot_enabled
+        active = enabled and configured and running and healthy
+        message = self._build_status_message(
+            enabled=enabled,
+            configured=configured,
+            running=running,
+            healthy=healthy,
+            last_error=last_error,
+        )
+        return {
+            "telegram_enabled": enabled,
+            "telegram_configured": configured,
+            "telegram_running": running,
+            "telegram_healthy": healthy,
+            "telegram_active": active,
+            "telegram_message": message,
+            "telegram_last_error": last_error,
+        }
+
+    def _run_poll_loop(self) -> None:
+        """Main worker loop: receive Telegram updates and process message commands."""
+        while not self._stop_event.is_set():
+            try:
+                updates = self._poll_updates()
+                self._set_health(True, None)
+                for update in updates:
+                    self._offset = max(self._offset, int(update.get("update_id", 0)) + 1)
+                    self._handle_update(update)
+            except Exception as exc:  # noqa: BLE001
+                self._set_health(False, str(exc))
+                logger.exception("Telegram polling loop failed: %s", exc)
+                self._stop_event.wait(self.settings.telegram_poll_retry_seconds)
+
+    def _poll_updates(self) -> list[dict]:
+        """Fetch pending updates from Telegram API using long polling."""
+        payload = {
+            "timeout": self.settings.telegram_poll_timeout_seconds,
+            "offset": self._offset,
+            "allowed_updates": ["message"],
+        }
+        response = self._api_post("getUpdates", payload)
+        if not response.get("ok"):
+            raise RuntimeError(f"Telegram getUpdates failed: {response}")
+        return response.get("result", [])
+
+    def _handle_update(self, update: dict) -> None:
+        """Handle one Telegram update object (text commands + guided conversation)."""
+        message = update.get("message") or {}
+        text = str(message.get("text") or "").strip()
+        if not text:
+            return
+
+        chat_id = int((message.get("chat") or {}).get("id", 0))
+        if chat_id == 0:
+            return
+
+        if self._allowed_chat_ids and chat_id not in self._allowed_chat_ids:
+            self._send_message(chat_id, "הצ'אט הזה לא מורשה לעדכן סטטוס.")
+            return
+
+        if text.startswith("/cancel"):
+            self._clear_conversation(chat_id)
+            self._send_message(
+                chat_id,
+                "תהליך ההזנה בוטל. להתחלה מחדש שלח /start",
+                reply_markup=self._remove_keyboard_markup(),
+            )
+            return
+
+        if text.startswith("/start"):
+            self._start_conversation(chat_id)
+            return
+
+        if text.startswith("/help"):
+            self._send_message(chat_id, self._help_text())
+            return
+
+        if text.startswith("/locations"):
+            locations = self.snapshot_service.get_locations()
+            self._send_message(chat_id, "מיקומים זמינים:\n" + "\n".join(f"- {item}" for item in locations))
+            return
+
+        if text.startswith("/chatid"):
+            self._send_message(chat_id, f"chat_id שלך: {chat_id}")
+            return
+
+        if text.startswith("/status"):
+            payload_text = text.removeprefix("/status").strip()
+            if payload_text:
+                self._handle_direct_status_update(chat_id, payload_text)
+            else:
+                self._start_conversation(chat_id)
+            return
+
+        conversation = self._get_conversation(chat_id)
+        if conversation:
+            self._continue_conversation(chat_id, text, conversation)
+            return
+
+        if "|" in text:
+            self._handle_direct_status_update(chat_id, text)
+            return
+
+        self._send_message(chat_id, "כדי להתחיל הזנה שלח /start")
+
+    def _start_conversation(self, chat_id: int) -> None:
+        """Start guided 3-step flow: name -> location -> status."""
+        try:
+            person_options = self._build_person_options_for_remote_input()
+        except AppError as exc:
+            self._send_message(chat_id, f"ההזנה לא נקלטה בהצלחה: {exc}")
+            return
+
+        if not person_options:
+            self._send_message(
+                chat_id,
+                "אין כרגע שמות זמינים להזנה מרחוק.",
+                reply_markup=self._remove_keyboard_markup(),
+            )
+            return
+
+        self._set_conversation(
+            chat_id,
+            {
+                "state": STATE_WAITING_NAME,
+                "person_options": person_options,
+            },
+        )
+        self._send_message(
+            chat_id,
+            "שלב 1/3: מה השם של הבן אדם?",
+            reply_markup=self._build_keyboard([item["label"] for item in person_options]),
+        )
+
+    def _continue_conversation(self, chat_id: int, text: str, conversation: dict) -> None:
+        """Continue guided conversation according to current chat state."""
+        state = conversation.get("state")
+
+        if state == STATE_WAITING_NAME:
+            self._handle_waiting_name(chat_id, text, conversation)
+            return
+
+        if state == STATE_WAITING_LOCATION:
+            self._handle_waiting_location(chat_id, text, conversation)
+            return
+
+        if state == STATE_WAITING_STATUS:
+            self._handle_waiting_status(chat_id, text, conversation)
+            return
+
+        self._clear_conversation(chat_id)
+        self._send_message(chat_id, "מצב שיחה לא תקין. שלח /start להתחלה מחדש.")
+
+    def _handle_waiting_name(self, chat_id: int, text: str, conversation: dict) -> None:
+        """Validate selected person name and move flow to location step."""
+        person_options = conversation.get("person_options", [])
+        selected = self._match_person_option(text, person_options)
+        if not selected:
+            self._send_message(
+                chat_id,
+                "השם לא נמצא ברשימה המורשית. בחר/י שם מהרשימה.",
+                reply_markup=self._build_keyboard([item["label"] for item in person_options]),
+            )
+            return
+
+        locations = self.snapshot_service.get_locations()
+        self._set_conversation(
+            chat_id,
+            {
+                "state": STATE_WAITING_LOCATION,
+                "person_lookup": selected["person_lookup"],
+                "person_name": selected["full_name"],
+                "locations": locations,
+            },
+        )
+        self._send_message(
+            chat_id,
+            "שלב 2/3: מה המיקום מתוך רשימת המיקומים?",
+            reply_markup=self._build_keyboard(locations),
+        )
+
+    def _handle_waiting_location(self, chat_id: int, text: str, conversation: dict) -> None:
+        """Validate location and move flow to status step."""
+        locations = [str(item).strip() for item in conversation.get("locations", []) if str(item).strip()]
+        selected_location = self._match_text_option(text, locations)
+        if not selected_location:
+            self._send_message(
+                chat_id,
+                "המיקום לא נמצא ברשימת המיקומים. בחר/י מיקום מהרשימה.",
+                reply_markup=self._build_keyboard(locations),
+            )
+            return
+
+        self._set_conversation(
+            chat_id,
+            {
+                "state": STATE_WAITING_STATUS,
+                "person_lookup": conversation.get("person_lookup"),
+                "person_name": conversation.get("person_name"),
+                "selected_location": selected_location,
+            },
+        )
+        self._send_message(
+            chat_id,
+            "שלב 3/3: מה סטטוס ההזנה? תקין או לא תקין",
+            reply_markup=self._build_keyboard(list(STATUS_OPTIONS), row_size=2),
+        )
+
+    def _handle_waiting_status(self, chat_id: int, text: str, conversation: dict) -> None:
+        """Validate status and persist final self-report update."""
+        selected_status = self._match_text_option(text, list(STATUS_OPTIONS))
+        if not selected_status:
+            self._send_message(
+                chat_id,
+                "הסטטוס חייב להיות: תקין או לא תקין.",
+                reply_markup=self._build_keyboard(list(STATUS_OPTIONS), row_size=2),
+            )
+            return
+
+        person_lookup = str(conversation.get("person_lookup") or "").strip()
+        person_name = str(conversation.get("person_name") or "").strip()
+        selected_location = str(conversation.get("selected_location") or "").strip()
+
+        try:
+            updated_person = self.snapshot_service.update_self_report_today(
+                person_lookup=person_lookup,
+                self_location=selected_location,
+                self_daily_status=selected_status,
+            )
+            self._send_message(
+                chat_id,
+                "ההזנה נקלטה בהצלחה.\n"
+                f"שם: {person_name or updated_person.get('full_name', '-') }\n"
+                f"מיקום: {updated_person.get('self_location') or '-'}\n"
+                f"סטטוס: {updated_person.get('self_daily_status') or '-'}",
+                reply_markup=self._remove_keyboard_markup(),
+            )
+        except AppError as exc:
+            self._send_message(
+                chat_id,
+                f"ההזנה לא נקלטה בהצלחה: {exc}",
+                reply_markup=self._remove_keyboard_markup(),
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Unexpected Telegram conversation error: %s", exc)
+            self._send_message(
+                chat_id,
+                "ההזנה לא נקלטה בהצלחה עקב שגיאה בלתי צפויה.",
+                reply_markup=self._remove_keyboard_markup(),
+            )
+        finally:
+            self._clear_conversation(chat_id)
+
+    def _handle_direct_status_update(self, chat_id: int, payload_text: str) -> None:
+        """Backward-compatible direct update in format: person|location|status."""
+        try:
+            person_lookup, self_location, self_daily_status = self._parse_status_payload(payload_text)
+            updated_person = self.snapshot_service.update_self_report_today(
+                person_lookup=person_lookup,
+                self_location=self_location,
+                self_daily_status=self_daily_status,
+            )
+            self._send_message(
+                chat_id,
+                "ההזנה נקלטה בהצלחה.\n"
+                f"שם: {updated_person['full_name']}\n"
+                f"מיקום: {updated_person.get('self_location') or '-'}\n"
+                f"סטטוס: {updated_person.get('self_daily_status') or '-'}",
+            )
+        except AppError as exc:
+            self._send_message(chat_id, f"ההזנה לא נקלטה בהצלחה: {exc}")
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Unexpected Telegram command error: %s", exc)
+            self._send_message(chat_id, "ההזנה לא נקלטה בהצלחה עקב שגיאה בלתי צפויה.")
+
+    def _build_person_options_for_remote_input(self) -> list[dict]:
+        """Build selectable person list for remote input flow (with optional whitelist)."""
+        snapshot_payload = self.snapshot_service.get_today_snapshot()
+        people = snapshot_payload.get("people", [])
+
+        candidate_people: list[dict] = []
+        for person in people:
+            full_name = str(person.get("full_name") or "").strip()
+            person_id = str(person.get("person_id") or "").strip()
+            if not full_name or not person_id:
+                continue
+
+            if self._allowed_remote_name_keys and self._normalize_key(full_name) not in self._allowed_remote_name_keys:
+                continue
+
+            candidate_people.append(
+                {
+                    "person_id": person_id,
+                    "full_name": full_name,
+                }
+            )
+
+        if not candidate_people:
+            return []
+
+        candidate_people = sorted(
+            candidate_people,
+            key=lambda item: (item["full_name"], item["person_id"]),
+        )
+
+        name_counts = Counter(item["full_name"] for item in candidate_people)
+        options: list[dict] = []
+        for item in candidate_people:
+            duplicated_name = name_counts[item["full_name"]] > 1
+            label = (
+                f"{item['full_name']} ({item['person_id']})"
+                if duplicated_name
+                else item["full_name"]
+            )
+            options.append(
+                {
+                    "label": label,
+                    "full_name": item["full_name"],
+                    "person_lookup": item["person_id"],
+                }
+            )
+        return options
+
+    def _match_person_option(self, user_input: str, person_options: list[dict]) -> dict | None:
+        """Match user text to a person option label (or unique name)."""
+        normalized_input = self._normalize_key(user_input)
+        if not normalized_input:
+            return None
+
+        for option in person_options:
+            if self._normalize_key(option["label"]) == normalized_input:
+                return option
+
+        by_name_counter = Counter(self._normalize_key(option["full_name"]) for option in person_options)
+        unique_name_options = {
+            self._normalize_key(option["full_name"]): option
+            for option in person_options
+            if by_name_counter[self._normalize_key(option["full_name"])] == 1
+        }
+        return unique_name_options.get(normalized_input)
+
+    def _match_text_option(self, user_input: str, options: list[str]) -> str | None:
+        """Case-insensitive match of one user value against fixed options list."""
+        normalized_input = self._normalize_key(user_input)
+        if not normalized_input:
+            return None
+
+        for option in options:
+            if self._normalize_key(option) == normalized_input:
+                return option
+        return None
+
+    def _parse_status_payload(self, payload_text: str) -> tuple[str, str, str]:
+        """Parse status message payload in format: person|location|status."""
+        parts = [item.strip() for item in payload_text.split("|", 2)]
+        if len(parts) != 3 or not all(parts):
+            raise ValidationError(
+                "Invalid message format. Expected: person_id_or_name|location|תקין/לא תקין"
+            )
+        return parts[0], parts[1], parts[2]
+
+    def _help_text(self) -> str:
+        """Return user help message with supported commands and conversation flow."""
+        return (
+            "פקודות זמינות:\n"
+            "/start - התחלת הזנה מודרכת (שם -> מיקום -> סטטוס)\n"
+            "/cancel - ביטול הזנה נוכחית\n"
+            "/help - עזרה\n"
+            "/locations - רשימת מיקומים\n"
+            "/chatid - הצגת chat id\n\n"
+            "אפשר גם הזנה ישירה:\n"
+            "/status person_id_או_שם_מלא | מיקום | תקין/לא תקין"
+        )
+
+    def _send_message(self, chat_id: int, text: str, reply_markup: dict | None = None) -> None:
+        """Send one text message to Telegram chat (optionally with keyboard markup)."""
+        payload: dict = {
+            "chat_id": chat_id,
+            "text": text,
+        }
+        if reply_markup is not None:
+            payload["reply_markup"] = reply_markup
+        self._api_post("sendMessage", payload)
+
+    def _api_post(self, method_name: str, payload: dict) -> dict:
+        """Call Telegram Bot HTTP API with JSON payload and parse JSON response."""
+        if not self._is_enabled():
+            raise RuntimeError("Telegram bot is disabled")
+
+        url = f"https://api.telegram.org/bot{self._bot_token}/{method_name}"
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        request = Request(
+            url=url,
+            data=body,
+            method="POST",
+            headers={"Content-Type": "application/json; charset=utf-8"},
+        )
+        timeout = max(10, self.settings.telegram_poll_timeout_seconds + 5)
+        try:
+            with urlopen(request, timeout=timeout) as response:  # noqa: S310
+                raw = response.read().decode("utf-8")
+                return json.loads(raw)
+        except URLError as exc:
+            raise RuntimeError(f"Telegram API request failed ({method_name})") from exc
+
+    def _set_health(self, healthy: bool, last_error: str | None) -> None:
+        """Update internal health status from polling thread."""
+        with self._state_lock:
+            self._healthy = healthy
+            self._last_error = last_error
+
+    def _build_status_message(
+        self,
+        enabled: bool,
+        configured: bool,
+        running: bool,
+        healthy: bool,
+        last_error: str | None,
+    ) -> str:
+        """Build one short human-readable status message for UI."""
+        if not enabled:
+            return "בוט טלגרם לא פעיל"
+        if not configured:
+            return "בוט טלגרם לא פעיל (חסר token)"
+        if not running:
+            return "בוט טלגרם לא פעיל"
+        if not healthy:
+            return "בוט טלגרם לא פעיל"
+        if last_error:
+            return "בוט טלגרם פעיל עם שגיאה אחרונה"
+        return "בוט טלגרם פעיל"
+
+    def _build_keyboard(self, options: list[str], row_size: int = 2) -> dict:
+        """Build Telegram reply keyboard from options list."""
+        clean_options = [item.strip() for item in options if item and item.strip()]
+        if not clean_options:
+            return self._remove_keyboard_markup()
+
+        rows: list[list[str]] = []
+        current_row: list[str] = []
+        for option in clean_options:
+            current_row.append(option)
+            if len(current_row) == row_size:
+                rows.append(current_row)
+                current_row = []
+        if current_row:
+            rows.append(current_row)
+
+        return {
+            "keyboard": rows,
+            "resize_keyboard": True,
+            "one_time_keyboard": False,
+        }
+
+    def _remove_keyboard_markup(self) -> dict:
+        """Return Telegram markup to remove custom keyboard from chat."""
+        return {"remove_keyboard": True}
+
+    def _set_conversation(self, chat_id: int, conversation_data: dict) -> None:
+        """Save/replace one chat conversation state atomically."""
+        with self._conversation_lock:
+            self._conversation_by_chat[chat_id] = conversation_data
+
+    def _get_conversation(self, chat_id: int) -> dict | None:
+        """Fetch current conversation state for one chat."""
+        with self._conversation_lock:
+            conversation = self._conversation_by_chat.get(chat_id)
+            return dict(conversation) if conversation else None
+
+    def _clear_conversation(self, chat_id: int) -> None:
+        """Clear conversation state for one chat."""
+        with self._conversation_lock:
+            self._conversation_by_chat.pop(chat_id, None)
+
+    def _normalize_key(self, value: str) -> str:
+        """Normalize text keys for case-insensitive matching."""
+        return value.strip().lower()

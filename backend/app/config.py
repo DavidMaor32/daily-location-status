@@ -1,29 +1,129 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
-import os
+import logging
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
-from dotenv import load_dotenv
+import yaml
 
 
 BASE_DIR = Path(__file__).resolve().parents[2]
+DEFAULT_APP_CONFIG_PATH = BASE_DIR / "config" / "app_config.yaml"
+logger = logging.getLogger(__name__)
 
-# Load environment variables from project root and backend folder.
-load_dotenv(BASE_DIR / ".env")
-load_dotenv(BASE_DIR / "backend" / ".env")
-
-
-def _resolve_env_path(raw_value: str, default_path: Path) -> Path:
-    """Resolve relative env paths against project root for stable behavior."""
+def _resolve_path(raw_value: str | None, default_path: Path) -> Path:
+    """Resolve relative paths against project root for stable behavior."""
     candidate = Path(raw_value).expanduser() if raw_value else default_path
     if not candidate.is_absolute():
         candidate = BASE_DIR / candidate
     return candidate
 
 
+def _load_yaml_config(config_path: Path) -> dict[str, Any]:
+    """Load YAML configuration file from disk."""
+    if not config_path.exists():
+        raise ValueError(
+            f"YAML config file was not found: {config_path}. "
+            "Create config/app_config.yaml before starting the backend."
+        )
+
+    try:
+        raw_text = config_path.read_text(encoding="utf-8")
+        parsed = yaml.safe_load(raw_text) or {}
+    except Exception as exc:  # noqa: BLE001
+        raise ValueError(f"Failed reading YAML config file: {config_path}") from exc
+
+    if not isinstance(parsed, dict):
+        raise ValueError(f"YAML config must contain an object at root: {config_path}")
+
+    logger.info("Loaded YAML config from %s", config_path)
+    return parsed
+
+
+def _yaml_get(config_data: dict[str, Any], path: str, default: Any = None) -> Any:
+    """Read nested YAML value by dot path (example: storage.s3.bucket_name)."""
+    current: Any = config_data
+    for part in path.split("."):
+        if not isinstance(current, dict) or part not in current:
+            return default
+        current = current[part]
+    return current
+
+
+def _parse_bool(raw_value: Any, default: bool = False) -> bool:
+    """Parse bool-like values such as true/1/yes/on."""
+    if raw_value is None:
+        return default
+    if isinstance(raw_value, bool):
+        return raw_value
+    return str(raw_value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _parse_int_list(raw_value: Any) -> list[int]:
+    """Parse int list from YAML values (list or comma-separated string)."""
+    if not raw_value:
+        return []
+
+    if isinstance(raw_value, list):
+        items = raw_value
+    else:
+        items = str(raw_value).split(",")
+
+    parsed: list[int] = []
+    for item in items:
+        cleaned = str(item).strip()
+        if not cleaned:
+            continue
+        try:
+            parsed.append(int(cleaned))
+        except ValueError:
+            continue
+    return parsed
+
+
+def _parse_str_list(raw_value: Any) -> list[str]:
+    """Parse string list from YAML values (list or comma-separated string)."""
+    if not raw_value:
+        return []
+
+    if isinstance(raw_value, list):
+        items = raw_value
+    else:
+        items = str(raw_value).split(",")
+
+    parsed: list[str] = []
+    for item in items:
+        cleaned = str(item).strip()
+        if not cleaned:
+            continue
+        parsed.append(cleaned)
+    return parsed
+
+
+def _parse_positive_int(raw_value: Any, default: int, minimum: int = 1) -> int:
+    """Parse positive integer value with fallback and lower bound."""
+    if raw_value is None or str(raw_value).strip() == "":
+        return max(minimum, default)
+    try:
+        parsed = int(raw_value)
+    except ValueError:
+        return max(minimum, default)
+    return max(minimum, parsed)
+
+
+def _parse_origins(raw_value: Any) -> list[str]:
+    """Parse CORS origins from list or comma-separated string."""
+    if raw_value is None:
+        return ["http://localhost:5173"]
+    if isinstance(raw_value, list):
+        return [str(item).strip() for item in raw_value if str(item).strip()]
+    return [origin.strip() for origin in str(raw_value).split(",") if origin.strip()]
+
+
 @dataclass
 class Settings:
+    config_file_path: Path
     app_name: str
     environment: str
     storage_mode: str
@@ -38,32 +138,64 @@ class Settings:
     local_storage_dir: Path
     seed_people_file: Path
     cors_origins: list[str]
+    telegram_bot_enabled: bool
+    telegram_bot_token: str | None
+    telegram_allowed_chat_ids: list[int]
+    telegram_allowed_remote_names: list[str]
+    telegram_poll_timeout_seconds: int
+    telegram_poll_retry_seconds: int
 
     @classmethod
-    def from_env(cls) -> "Settings":
-        """Build Settings object from environment variables."""
-        raw_origins = os.getenv("CORS_ORIGINS", "http://localhost:5173")
-        cors_origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+    def from_yaml(cls) -> "Settings":
+        """Build Settings from YAML config file only."""
+        config_path = DEFAULT_APP_CONFIG_PATH
+        config_data = _load_yaml_config(config_path)
+
+        cors_origins = _parse_origins(
+            _yaml_get(config_data, "cors.origins", ["http://localhost:5173"])
+        )
 
         return cls(
-            app_name=os.getenv("APP_NAME", "Daily Status Manager API"),
-            environment=os.getenv("ENVIRONMENT", "development"),
-            storage_mode=os.getenv("STORAGE_MODE", "local").lower(),
-            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
-            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
-            aws_session_token=os.getenv("AWS_SESSION_TOKEN"),
-            aws_region_name=os.getenv("AWS_REGION", "us-east-1"),
-            s3_bucket_name=os.getenv("S3_BUCKET_NAME"),
-            s3_snapshots_prefix=os.getenv("S3_SNAPSHOTS_PREFIX", "snapshots"),
-            s3_master_key=os.getenv("S3_MASTER_KEY", "master/people_master.xlsx"),
-            s3_locations_key=os.getenv("S3_LOCATIONS_KEY", "master/locations.xlsx"),
-            local_storage_dir=_resolve_env_path(
-                os.getenv("LOCAL_STORAGE_DIR", ""),
+            config_file_path=config_path,
+            app_name=str(_yaml_get(config_data, "app.name", "Daily Status Manager API")),
+            environment=str(_yaml_get(config_data, "app.environment", "development")),
+            storage_mode=str(_yaml_get(config_data, "storage.mode", "local")).lower(),
+            aws_access_key_id=_yaml_get(config_data, "aws.access_key_id"),
+            aws_secret_access_key=_yaml_get(config_data, "aws.secret_access_key"),
+            aws_session_token=_yaml_get(config_data, "aws.session_token"),
+            aws_region_name=str(_yaml_get(config_data, "aws.region", "us-east-1")),
+            s3_bucket_name=_yaml_get(config_data, "storage.s3.bucket_name"),
+            s3_snapshots_prefix=str(_yaml_get(config_data, "storage.s3.snapshots_prefix", "snapshots")),
+            s3_master_key=str(_yaml_get(config_data, "storage.s3.master_key", "master/people_master.xlsx")),
+            s3_locations_key=str(_yaml_get(config_data, "storage.s3.locations_key", "master/locations.xlsx")),
+            local_storage_dir=_resolve_path(
+                str(_yaml_get(config_data, "storage.local_storage_dir", "")),
                 BASE_DIR / "local_storage",
             ),
-            seed_people_file=_resolve_env_path(
-                os.getenv("SEED_PEOPLE_FILE", ""),
+            seed_people_file=_resolve_path(
+                str(_yaml_get(config_data, "storage.seed_people_file", "")),
                 BASE_DIR / "backend" / "data" / "sample_people.csv",
             ),
             cors_origins=cors_origins,
+            telegram_bot_enabled=_parse_bool(
+                _yaml_get(config_data, "telegram.enabled", False),
+                default=False,
+            ),
+            telegram_bot_token=_yaml_get(config_data, "telegram.bot_token"),
+            telegram_allowed_chat_ids=_parse_int_list(
+                _yaml_get(config_data, "telegram.allowed_chat_ids", [])
+            ),
+            telegram_allowed_remote_names=_parse_str_list(
+                _yaml_get(config_data, "telegram.allowed_remote_names", [])
+            ),
+            telegram_poll_timeout_seconds=_parse_positive_int(
+                _yaml_get(config_data, "telegram.poll_timeout_seconds", 25),
+                default=25,
+                minimum=5,
+            ),
+            telegram_poll_retry_seconds=_parse_positive_int(
+                _yaml_get(config_data, "telegram.poll_retry_seconds", 3),
+                default=3,
+                minimum=1,
+            ),
         )

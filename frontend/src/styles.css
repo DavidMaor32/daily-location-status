@@ -1,4 +1,4 @@
-﻿:root {
+:root {
   font-family: "Assistant", "Segoe UI", sans-serif;
   color: #14323f;
   background: linear-gradient(135deg, #f7fbff 0%, #e7f1f7 45%, #f3f7ef 100%);
@@ -80,6 +80,10 @@ body {
   margin: 6px 0 0;
 }
 
+.auto-refresh-note {
+  font-size: 0.86rem;
+}
+
 .header-actions {
   display: flex;
   gap: 10px;
@@ -121,6 +125,16 @@ body {
 }
 
 .location-add-row .btn {
+  white-space: nowrap;
+}
+
+.location-remove-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.location-remove-row .btn {
   white-space: nowrap;
 }
 
@@ -255,7 +269,7 @@ textarea {
 .people-table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 940px;
+  min-width: 1180px;
 }
 
 .people-table th,
@@ -269,6 +283,13 @@ textarea {
 .people-table thead th {
   background: #f4f9fd;
   color: #1f4459;
+}
+
+.column-note {
+  margin-top: 4px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: #8a2127;
 }
 
 .status-chip {

@@ -1,10 +1,10 @@
 // Default locations used when locations Excel file is created.
-const HOME_LOCATION = "\u05d1\u05d1\u05d9\u05ea";
-const LOCATION_1 = "\u05de\u05d9\u05e7\u05d5\u05dd 1";
-const LOCATION_2 = "\u05de\u05d9\u05e7\u05d5\u05dd 2";
-const LOCATION_3 = "\u05de\u05d9\u05e7\u05d5\u05dd 3";
-const LOCATION_4 = "\u05de\u05d9\u05e7\u05d5\u05dd 4";
-const LOCATION_5 = "\u05de\u05d9\u05e7\u05d5\u05dd 5";
+const HOME_LOCATION = "בבית";
+const LOCATION_1 = "מיקום 1";
+const LOCATION_2 = "מיקום 2";
+const LOCATION_3 = "מיקום 3";
+const LOCATION_4 = "מיקום 4";
+const LOCATION_5 = "מיקום 5";
 
 export const DEFAULT_LOCATION_OPTIONS = [
   HOME_LOCATION,

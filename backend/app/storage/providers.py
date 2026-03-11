@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import logging
 from pathlib import Path
@@ -22,13 +22,20 @@ class LocalStorageProvider(StorageProvider):
         self.root_dir = root_dir
         self.root_dir.mkdir(parents=True, exist_ok=True)
 
-    def _resolve(self, key: str) -> Path:
-        """Resolve safe absolute path under storage root."""
+    def _resolve(self, key: str, create_parent: bool = False) -> Path:
+        """Resolve safe absolute path under storage root (optionally creates parent folder)."""
         safe_key = key.replace("..", "").lstrip("/\\")
         target_path = (self.root_dir / safe_key).resolve()
-        if not str(target_path).startswith(str(self.root_dir.resolve())):
+
+        # Guard against path traversal outside storage root.
+        try:
+            target_path.relative_to(self.root_dir.resolve())
+        except ValueError:
             raise StorageError("Invalid storage key path")
-        target_path.parent.mkdir(parents=True, exist_ok=True)
+
+        if create_parent:
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+
         return target_path
 
     def exists(self, key: str) -> bool:
@@ -44,7 +51,7 @@ class LocalStorageProvider(StorageProvider):
 
     def write_bytes(self, key: str, content: bytes) -> None:
         """Write object bytes into local storage."""
-        file_path = self._resolve(key)
+        file_path = self._resolve(key, create_parent=True)
         file_path.write_bytes(content)
 
     def list_keys(self, prefix: str) -> list[str]:

@@ -53,6 +53,8 @@ class PersonUpdate(BaseModel):
     full_name: Optional[str] = Field(default=None, min_length=2, max_length=120)
     location: Optional[str] = Field(default=None, min_length=1, max_length=LOCATION_MAX_LENGTH)
     daily_status: Optional[DailyStatusType] = None
+    self_location: Optional[str] = Field(default=None, min_length=1, max_length=LOCATION_MAX_LENGTH)
+    self_daily_status: Optional[DailyStatusType] = None
     notes: Optional[str] = Field(default=None, max_length=500)
 
     @field_validator("full_name")
@@ -77,6 +79,17 @@ class PersonUpdate(BaseModel):
             raise ValueError("location cannot be empty")
         return cleaned
 
+    @field_validator("self_location")
+    @classmethod
+    def normalize_optional_self_location(cls, value: Optional[str]) -> Optional[str]:
+        """Trim optional self-location value while preserving None."""
+        if value is None:
+            return value
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("self_location cannot be empty")
+        return cleaned
+
     @field_validator("notes")
     @classmethod
     def normalize_optional_notes(cls, value: Optional[str]) -> Optional[str]:
@@ -93,9 +106,37 @@ class PersonRecord(BaseModel):
     full_name: str
     location: str
     daily_status: DailyStatusType
+    self_location: Optional[str] = None
+    self_daily_status: Optional[DailyStatusType] = None
     notes: str
     last_updated: str
     date: date
+
+
+class SelfReportUpdate(BaseModel):
+    """Payload for self-service status updates (Telegram or any external client)."""
+
+    person_lookup: str = Field(..., min_length=1, max_length=120)
+    self_location: str = Field(..., min_length=1, max_length=LOCATION_MAX_LENGTH)
+    self_daily_status: DailyStatusType
+
+    @field_validator("person_lookup")
+    @classmethod
+    def normalize_person_lookup(cls, value: str) -> str:
+        """Trim lookup text (person_id or full_name)."""
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("person_lookup cannot be empty")
+        return cleaned
+
+    @field_validator("self_location")
+    @classmethod
+    def normalize_self_location(cls, value: str) -> str:
+        """Trim and validate self-location."""
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("self_location cannot be empty")
+        return cleaned
 
 
 class SnapshotResponse(BaseModel):
@@ -130,3 +171,15 @@ class LocationListResponse(BaseModel):
     """Response model for available location options."""
 
     locations: list[str]
+
+
+class SystemStatusResponse(BaseModel):
+    """Response model for backend runtime integrations status."""
+
+    telegram_enabled: bool
+    telegram_configured: bool
+    telegram_running: bool
+    telegram_healthy: bool
+    telegram_active: bool
+    telegram_message: str
+    telegram_last_error: Optional[str] = None

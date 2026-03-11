@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
@@ -19,21 +19,25 @@ from app.models import (
     PersonCreate,
     PersonRecord,
     PersonUpdate,
+    SelfReportUpdate,
     SnapshotResponse,
+    SystemStatusResponse,
 )
 from app.services.snapshot_service import SnapshotService
+from app.services.telegram_bot_service import TelegramBotService
 from app.storage.providers import build_storage
 
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 EXCEL_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+telegram_bot_service: TelegramBotService | None = None
 
 
 @lru_cache
 def get_settings() -> Settings:
-    """Load and cache environment settings once per process."""
-    return Settings.from_env()
+    """Load and cache YAML settings once per process."""
+    return Settings.from_yaml()
 
 
 @lru_cache
@@ -64,21 +68,54 @@ def build_download_response(content: bytes, filename: str, media_type: str) -> S
     return response
 
 
+def get_system_status() -> dict:
+    """Return backend runtime status payload for UI and operations dashboards."""
+    if telegram_bot_service is None:
+        settings = get_settings()
+        configured = bool((settings.telegram_bot_token or "").strip())
+        enabled = settings.telegram_bot_enabled
+        if not enabled:
+            message = "בוט טלגרם לא פעיל"
+        elif not configured:
+            message = "בוט טלגרם לא פעיל (חסר token)"
+        else:
+            message = "בוט טלגרם באתחול"
+        return {
+            "telegram_enabled": enabled,
+            "telegram_configured": configured,
+            "telegram_running": False,
+            "telegram_healthy": False,
+            "telegram_active": False,
+            "telegram_message": message,
+            "telegram_last_error": None,
+        }
+    return telegram_bot_service.get_runtime_status()
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     """Initialize today's snapshot during application startup."""
+    global telegram_bot_service
     service = get_snapshot_service()
+    settings = get_settings()
+    logger.info("Using startup config file: %s", settings.config_file_path)
     try:
         service.initialize_today_snapshot()
         logger.info("Today's snapshot initialized successfully")
     except Exception as exc:  # noqa: BLE001
         logger.exception("Startup initialization failed: %s", exc)
-    yield
 
+    telegram_bot_service = TelegramBotService(settings=settings, snapshot_service=service)
+    telegram_bot_service.start()
+    try:
+        yield
+    finally:
+        if telegram_bot_service is not None:
+            telegram_bot_service.stop()
 
-app = FastAPI(title="Daily Status Manager API", version="1.0.0", lifespan=lifespan)
 
 settings = get_settings()
+app = FastAPI(title=settings.app_name, version="1.0.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -116,6 +153,12 @@ async def app_error_handler(_: object, exc: AppError):
 def health() -> dict:
     """Health-check endpoint used by monitoring and readiness checks."""
     return {"status": "ok"}
+
+
+@app.get("/api/system/status", response_model=SystemStatusResponse)
+def system_status() -> SystemStatusResponse:
+    """Return current runtime status for optional integrations."""
+    return SystemStatusResponse(**get_system_status())
 
 
 @app.get("/api/snapshot/today", response_model=SnapshotResponse)
@@ -176,6 +219,15 @@ def create_location(
     return LocationListResponse(locations=service.add_location(payload.location))
 
 
+@app.delete("/api/locations/{location_name}", response_model=LocationListResponse)
+def remove_location(
+    location_name: str,
+    service: SnapshotService = Depends(service_dep),
+) -> LocationListResponse:
+    """Delete one location option and return updated location list."""
+    return LocationListResponse(locations=service.delete_location(location_name))
+
+
 @app.post("/api/people", response_model=PersonRecord)
 def create_person(payload: PersonCreate, service: SnapshotService = Depends(service_dep)) -> PersonRecord:
     """Create a person in master list and insert into today's snapshot."""
@@ -188,8 +240,23 @@ def quick_update_person(
     payload: PersonUpdate,
     service: SnapshotService = Depends(service_dep),
 ) -> PersonRecord:
-    """Apply partial update (location/status/notes/name) to today's row."""
+    """Apply partial update to today's row."""
     return PersonRecord(**service.update_person_today(person_id, payload))
+
+
+@app.post("/api/self-report", response_model=PersonRecord)
+def create_self_report(
+    payload: SelfReportUpdate,
+    service: SnapshotService = Depends(service_dep),
+) -> PersonRecord:
+    """Update today's self-reported location and status."""
+    return PersonRecord(
+        **service.update_self_report_today(
+            person_lookup=payload.person_lookup,
+            self_location=payload.self_location,
+            self_daily_status=payload.self_daily_status,
+        )
+    )
 
 
 @app.put("/api/people/{person_id}", response_model=PersonRecord)

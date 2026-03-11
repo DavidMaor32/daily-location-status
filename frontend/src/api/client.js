@@ -1,4 +1,5 @@
-﻿const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+// Value is injected by Vite from config/app_config.yaml (frontend.api_base_url).
+const API_BASE_URL = __API_BASE_URL__ || "";
 
 // Extract filename from Content-Disposition header.
 function extractFilename(contentDisposition, fallbackName) {
@@ -84,6 +85,11 @@ export function fetchAvailableDates() {
   return apiRequest("/api/history/dates");
 }
 
+// Load backend integration runtime status (Telegram bot, etc.).
+export function fetchSystemStatus() {
+  return apiRequest("/api/system/status");
+}
+
 // Load list of available locations (stored in locations Excel file).
 export function fetchLocations() {
   return apiRequest("/api/locations");
@@ -94,6 +100,13 @@ export function createLocation(location) {
   return apiRequest("/api/locations", {
     method: "POST",
     body: JSON.stringify({ location }),
+  });
+}
+
+// Delete one location option from locations Excel file.
+export function deleteLocation(location) {
+  return apiRequest(`/api/locations/${encodeURIComponent(location)}`, {
+    method: "DELETE",
   });
 }
 
