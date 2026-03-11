@@ -9,10 +9,7 @@ export const DAILY_STATUS_OPTIONS = [
   DAILY_STATUS_MISSING,
 ];
 
-export const SELF_REPORT_STATUS_OPTIONS = [
-  DAILY_STATUS_OK,
-  DAILY_STATUS_BAD,
-];
+export const SELF_REPORT_STATUS_OPTIONS = [DAILY_STATUS_OK, DAILY_STATUS_BAD];
 
 // Map daily/self status value to chip color class.
 export function getDailyStatusChipClass(status) {
@@ -24,3 +21,4 @@ export function getDailyStatusChipClass(status) {
   }
   return "chip-status-missing";
 }
+

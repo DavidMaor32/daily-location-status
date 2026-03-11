@@ -73,7 +73,9 @@ function PersonTable({
               <tr key={person.person_id}>
                 <td>{person.full_name}</td>
                 <td>
-                  <span className={`status-chip ${getLocationChipClass(person.location)}`}>
+                  <span
+                    className={`status-chip ${getLocationChipClass(person.location)}`}
+                  >
                     {person.location}
                   </span>
                   {!readOnly ? (
@@ -82,9 +84,7 @@ function PersonTable({
                         <button
                           key={location}
                           className="btn btn-chip"
-                          onClick={() =>
-                            onQuickUpdate(person.person_id, { location })
-                          }
+                          onClick={() => onQuickUpdate(person.person_id, { location })}
                         >
                           {location}
                         </button>
@@ -93,7 +93,9 @@ function PersonTable({
                   ) : null}
                 </td>
                 <td>
-                  <span className={`status-chip ${getDailyStatusChipClass(person.daily_status)}`}>
+                  <span
+                    className={`status-chip ${getDailyStatusChipClass(person.daily_status)}`}
+                  >
                     {person.daily_status}
                   </span>
                   {!readOnly ? (
@@ -133,20 +135,30 @@ function PersonTable({
                 </td>
                 <td>
                   {person.self_location ? (
-                    <span className={`status-chip ${getLocationChipClass(person.self_location)}`}>
+                    <span
+                      className={`status-chip ${getLocationChipClass(person.self_location)}`}
+                    >
                       {person.self_location}
                     </span>
+                  ) : telegramActive ? (
+                    "-"
                   ) : (
-                    telegramActive ? "-" : ""
+                    ""
                   )}
                 </td>
                 <td>
                   {person.self_daily_status ? (
-                    <span className={`status-chip ${getDailyStatusChipClass(person.self_daily_status)}`}>
+                    <span
+                      className={`status-chip ${getDailyStatusChipClass(
+                        person.self_daily_status
+                      )}`}
+                    >
                       {person.self_daily_status}
                     </span>
+                  ) : telegramActive ? (
+                    "-"
                   ) : (
-                    telegramActive ? "-" : ""
+                    ""
                   )}
                 </td>
                 <td>{person.notes || "-"}</td>
@@ -170,3 +182,4 @@ function PersonTable({
 }
 
 export default PersonTable;
+

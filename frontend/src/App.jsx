@@ -1,13 +1,13 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   addInitialPeopleList,
   addPerson,
   createLocation,
   deleteLocation,
+  deletePerson,
   downloadDaySnapshot,
   downloadRangeSnapshots,
-  deletePerson,
   fetchAvailableDates,
   fetchLocations,
   fetchSnapshotByDate,
@@ -38,7 +38,7 @@ const DEFAULT_SYSTEM_STATUS = {
   telegram_running: false,
   telegram_healthy: false,
   telegram_active: false,
-  telegram_message: "׳‘׳•׳˜ ׳˜׳׳’׳¨׳ ׳׳ ׳₪׳¢׳™׳",
+  telegram_message: "בוט טלגרם לא פעיל",
   telegram_last_error: null,
 };
 
@@ -99,7 +99,6 @@ function normalizeSnapshotPayload(payload, fallbackDate) {
 function App() {
   const todayString = getTodayString();
 
-  // Snapshot currently displayed on screen (today or selected history date).
   const [snapshot, setSnapshot] = useState({ date: todayString, people: [] });
   const [selectedDate, setSelectedDate] = useState(todayString);
   const [availableDates, setAvailableDates] = useState([]);
@@ -125,10 +124,8 @@ function App() {
   const [modalMode, setModalMode] = useState("add");
   const [editingPerson, setEditingPerson] = useState(null);
 
-  // Historical snapshots are read-only by design.
   const isReadOnly = snapshot.date !== todayString;
 
-  // Merge locations list from backend with values found in current snapshot.
   const effectiveLocationOptions = useMemo(() => {
     const locationsFromSnapshot = snapshot.people.map((person) =>
       String(person?.location || "")
@@ -140,12 +137,11 @@ function App() {
     ]);
   }, [locationOptions, snapshot.people]);
 
-  // "׳‘׳™׳×" ׳”׳•׳ ׳׳™׳§׳•׳ ׳‘׳¨׳™׳¨׳× ׳׳—׳“׳ ׳—׳•׳‘׳” ׳•׳׳›׳ ׳׳ ׳׳•׳¦׳’ ׳‘׳¨׳©׳™׳׳× ׳׳—׳™׳§׳”.
+  // "בית" הוא מיקום ברירת מחדל חובה ולכן לא מוצג ברשימת מחיקה.
   const deletableLocationOptions = useMemo(() => {
-    return locationOptions.filter((location) => location !== "׳‘׳‘׳™׳×");
+    return locationOptions.filter((location) => location !== "בבית");
   }, [locationOptions]);
 
-  // Build filtered and sorted table rows based on search/filters.
   const filteredPeople = useMemo(() => {
     return snapshot.people
       .filter((person) => {
@@ -175,13 +171,11 @@ function App() {
       );
   }, [snapshot.people, searchTerm, locationFilter, statusFilter]);
 
-  // Initial loading sequence when page is mounted.
   useEffect(() => {
     initialize();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Keep selected delete-location value valid after list refresh.
   useEffect(() => {
     if (deletableLocationOptions.length === 0) {
       setLocationToDelete("");
@@ -192,7 +186,6 @@ function App() {
     }
   }, [deletableLocationOptions, locationToDelete]);
 
-  // Auto-refresh today's table so Telegram/self updates appear quickly in UI.
   useEffect(() => {
     if (selectedDate !== todayString || !systemStatus.telegram_active) {
       return undefined;
@@ -243,30 +236,22 @@ function App() {
       applyLocationOptions(locationsResponse.locations || []);
     } catch (err) {
       setSystemStatus(DEFAULT_SYSTEM_STATUS);
-      setError(getErrorMessage(err, "׳˜׳¢׳™׳ ׳× ׳”׳ ׳×׳•׳ ׳™׳ ׳ ׳›׳©׳׳”"));
+      setError(getErrorMessage(err, "טעינת הנתונים נכשלה"));
     } finally {
       setLoading(false);
     }
   }
 
-  // Refresh available date list after data changes.
   async function refreshDates() {
     const datesResponse = await fetchAvailableDates();
     setAvailableDates(datesResponse.dates || []);
   }
 
-  // Keep one canonical way to merge locations from backend with defaults.
   function applyLocationOptions(apiLocations) {
     const safeApiLocations = Array.isArray(apiLocations) ? apiLocations : [];
-    setLocationOptions(
-      uniqueLocations([
-        ...DEFAULT_LOCATION_OPTIONS,
-        ...safeApiLocations,
-      ])
-    );
+    setLocationOptions(uniqueLocations([...DEFAULT_LOCATION_OPTIONS, ...safeApiLocations]));
   }
 
-  // Load one date (today or historical) and refresh date badges.
   async function loadSelectedDate(dateValue) {
     setLoading(true);
     setError("");
@@ -284,13 +269,12 @@ function App() {
       setSystemStatus(normalizeSystemStatus(systemStatusResponse));
       await refreshDates();
     } catch (err) {
-      setError(getErrorMessage(err, "׳׳ ׳ ׳™׳×׳ ׳׳˜׳¢׳•׳ ׳׳× ׳”׳×׳׳¨׳™׳ ׳”׳׳‘׳•׳§׳©"));
+      setError(getErrorMessage(err, "לא ניתן לטעון את התאריך המבוקש"));
     } finally {
       setLoading(false);
     }
   }
 
-  // Trigger browser file download from received blob payload.
   function triggerBlobDownload(blob, filename) {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -302,10 +286,9 @@ function App() {
     URL.revokeObjectURL(url);
   }
 
-  // Download xlsx file for the currently selected date.
   async function handleDownloadDayFile() {
     if (!selectedDate) {
-      setError("׳™׳© ׳׳‘׳—׳•׳¨ ׳×׳׳¨׳™׳ ׳׳”׳•׳¨׳“׳”");
+      setError("יש לבחור תאריך להורדה");
       return;
     }
 
@@ -315,21 +298,20 @@ function App() {
       const { blob, filename } = await downloadDaySnapshot(selectedDate);
       triggerBlobDownload(blob, filename);
     } catch (err) {
-      setError(getErrorMessage(err, "׳”׳•׳¨׳“׳× ׳§׳•׳‘׳¥ ׳”׳™׳•׳ ׳ ׳›׳©׳׳”"));
+      setError(getErrorMessage(err, "הורדת קובץ היום נכשלה"));
     } finally {
       setActionLoading(false);
     }
   }
 
-  // Download zip file with all xlsx snapshots in selected date range.
   async function handleDownloadRangeFiles() {
     if (!downloadFromDate || !downloadToDate) {
-      setError("׳™׳© ׳׳‘׳—׳•׳¨ ׳˜׳•׳•׳— ׳×׳׳¨׳™׳›׳™׳ ׳׳׳");
+      setError("יש לבחור טווח תאריכים מלא");
       return;
     }
 
     if (downloadFromDate > downloadToDate) {
-      setError("׳×׳׳¨׳™׳ ׳”׳×׳—׳׳” ׳—׳™׳™׳‘ ׳׳”׳™׳•׳× ׳§׳˜׳ ׳׳• ׳©׳•׳•׳” ׳׳×׳׳¨׳™׳ ׳¡׳™׳•׳");
+      setError("תאריך התחלה חייב להיות קטן או שווה לתאריך סיום");
       return;
     }
 
@@ -342,13 +324,12 @@ function App() {
       );
       triggerBlobDownload(blob, filename);
     } catch (err) {
-      setError(getErrorMessage(err, "׳”׳•׳¨׳“׳× ׳§׳‘׳¦׳™ ׳”׳˜׳•׳•׳— ׳ ׳›׳©׳׳”"));
+      setError(getErrorMessage(err, "הורדת קבצי הטווח נכשלה"));
     } finally {
       setActionLoading(false);
     }
   }
 
-  // Quick patch for location/status values in today's snapshot.
   async function handleQuickUpdate(personId, patch) {
     setActionLoading(true);
     setError("");
@@ -357,22 +338,21 @@ function App() {
       await quickUpdatePerson(personId, patch);
       await loadSelectedDate(todayString);
     } catch (err) {
-      setError(getErrorMessage(err, "׳¢׳“׳›׳•׳ ׳׳”׳™׳¨ ׳ ׳›׳©׳"));
+      setError(getErrorMessage(err, "עדכון מהיר נכשל"));
     } finally {
       setActionLoading(false);
     }
   }
 
-  // Add a new location option via backend (persisted to locations Excel file).
   async function handleAddLocation() {
     const normalized = normalizeLocationName(newLocationName);
     if (!normalized) {
-      setError("׳™׳© ׳׳”׳–׳™׳ ׳©׳ ׳׳™׳§׳•׳ ׳׳₪׳ ׳™ ׳”׳•׳¡׳₪׳”");
+      setError("יש להזין שם מיקום לפני הוספה");
       return;
     }
 
     if (effectiveLocationOptions.includes(normalized)) {
-      setError("׳”׳׳™׳§׳•׳ ׳›׳‘׳¨ ׳§׳™׳™׳ ׳‘׳¨׳©׳™׳׳”");
+      setError("המיקום כבר קיים ברשימה");
       return;
     }
 
@@ -384,21 +364,20 @@ function App() {
       applyLocationOptions(response.locations || []);
       setNewLocationName("");
     } catch (err) {
-      setError(getErrorMessage(err, "׳”׳•׳¡׳₪׳× ׳׳™׳§׳•׳ ׳ ׳›׳©׳׳”"));
+      setError(getErrorMessage(err, "הוספת מיקום נכשלה"));
     } finally {
       setActionLoading(false);
     }
   }
 
-  // Delete an existing location option from managed list.
   async function handleDeleteLocation() {
     const normalized = normalizeLocationName(locationToDelete);
     if (!normalized) {
-      setError("׳™׳© ׳׳‘׳—׳•׳¨ ׳׳™׳§׳•׳ ׳׳׳—׳™׳§׳”");
+      setError("יש לבחור מיקום למחיקה");
       return;
     }
 
-    const approved = window.confirm(`׳׳׳—׳•׳§ ׳׳× ׳”׳׳™׳§׳•׳ "${normalized}"?`);
+    const approved = window.confirm(`למחוק את המיקום "${normalized}"?`);
     if (!approved) {
       return;
     }
@@ -414,13 +393,12 @@ function App() {
         setLocationFilter("all");
       }
     } catch (err) {
-      setError(getErrorMessage(err, "׳׳—׳™׳§׳× ׳׳™׳§׳•׳ ׳ ׳›׳©׳׳”"));
+      setError(getErrorMessage(err, "מחיקת מיקום נכשלה"));
     } finally {
       setActionLoading(false);
     }
   }
 
-  // Add a bulk initial names list to master and today's snapshot.
   async function handleAddInitialPeopleList() {
     const names = initialPeopleInput
       .split(/\r?\n|,/)
@@ -428,7 +406,7 @@ function App() {
       .filter((item) => item.length >= 2);
 
     if (names.length === 0) {
-      setError("׳™׳© ׳׳”׳–׳™׳ ׳׳₪׳—׳•׳× ׳©׳ ׳׳׳ ׳׳—׳“ (׳׳₪׳—׳•׳× 2 ׳×׳•׳•׳™׳)");
+      setError("יש להזין לפחות שם מלא אחד (לפחות 2 תווים)");
       return;
     }
 
@@ -443,30 +421,27 @@ function App() {
       const createdCount = Number(response?.created_count || 0);
       const skippedCount = Number(response?.skipped_count || 0);
       window.alert(
-        `׳”׳¨׳©׳™׳׳” ׳ ׳§׳׳˜׳” ׳‘׳”׳¦׳׳—׳”.\n׳ ׳•׳¡׳₪׳•: ${createdCount}\n׳“׳•׳׳’׳• (׳›׳‘׳¨ ׳§׳™׳™׳׳™׳): ${skippedCount}`
+        `הרשימה נקלטה בהצלחה.\nנוספו: ${createdCount}\nדולגו (כבר קיימים): ${skippedCount}`
       );
     } catch (err) {
-      setError(getErrorMessage(err, "׳”׳•׳¡׳₪׳× ׳¨׳©׳™׳׳× ׳©׳׳•׳× ׳”׳×׳—׳׳×׳™׳× ׳ ׳›׳©׳׳”"));
+      setError(getErrorMessage(err, "הוספת רשימת שמות התחלתית נכשלה"));
     } finally {
       setActionLoading(false);
     }
   }
 
-  // Open modal for creating a new person.
   function openAddModal() {
     setModalMode("add");
     setEditingPerson(null);
     setModalOpen(true);
   }
 
-  // Open modal for editing an existing person.
   function openEditModal(person) {
     setModalMode("edit");
     setEditingPerson(person);
     setModalOpen(true);
   }
 
-  // Submit add/edit form and refresh today's snapshot.
   async function handleModalSubmit(formData) {
     setActionLoading(true);
     setError("");
@@ -482,20 +457,19 @@ function App() {
       setEditingPerson(null);
       await loadSelectedDate(todayString);
     } catch (err) {
-      setError(getErrorMessage(err, "׳©׳׳™׳¨׳× ׳”׳ ׳×׳•׳ ׳™׳ ׳ ׳›׳©׳׳”"));
+      setError(getErrorMessage(err, "שמירת הנתונים נכשלה"));
     } finally {
       setActionLoading(false);
     }
   }
 
-  // Delete current edited person (today + master list) after confirmation.
   async function handleDeletePerson() {
     if (!editingPerson) {
       return;
     }
 
     const approved = window.confirm(
-      `׳׳׳—׳•׳§ ׳׳× ${editingPerson.full_name} ׳׳¨׳©׳™׳׳× ׳”׳׳ ׳©׳™׳?`
+      `למחוק את ${editingPerson.full_name} מרשימת האנשים?`
     );
     if (!approved) {
       return;
@@ -510,20 +484,19 @@ function App() {
       setEditingPerson(null);
       await loadSelectedDate(todayString);
     } catch (err) {
-      setError(getErrorMessage(err, "׳׳—׳™׳§׳× ׳׳“׳ ׳ ׳›׳©׳׳”"));
+      setError(getErrorMessage(err, "מחיקת אדם נכשלה"));
     } finally {
       setActionLoading(false);
     }
   }
 
-  // Restore selected historical snapshot into today's snapshot file.
   async function handleRestoreHistory() {
     if (!isReadOnly) {
       return;
     }
 
     const approved = window.confirm(
-      `׳”׳׳ ׳׳©׳—׳–׳¨ ׳׳× ׳”׳ ׳×׳•׳ ׳™׳ ׳©׳ ${snapshot.date} ׳׳×׳•׳ ׳”׳™׳•׳ (${todayString})?`
+      `האם לשחזר את הנתונים של ${snapshot.date} לתוך היום (${todayString})?`
     );
 
     if (!approved) {
@@ -537,7 +510,7 @@ function App() {
       await restoreHistoryToToday(snapshot.date);
       await loadSelectedDate(todayString);
     } catch (err) {
-      setError(getErrorMessage(err, "׳©׳—׳–׳•׳¨ ׳”׳”׳™׳¡׳˜׳•׳¨׳™׳” ׳ ׳›׳©׳"));
+      setError(getErrorMessage(err, "שחזור ההיסטוריה נכשל"));
     } finally {
       setActionLoading(false);
     }
@@ -547,20 +520,20 @@ function App() {
     <div className="app-shell" dir="rtl">
       <header className="header-card">
         <div>
-          <h1>׳ ׳™׳”׳•׳ ׳¡׳˜׳˜׳•׳¡ ׳™׳•׳׳™ ׳•׳׳™׳§׳•׳</h1>
-          <p className="muted-text">׳׳¢׳§׳‘ ׳™׳•׳׳™ ׳׳₪׳™ snapshot ׳׳›׳ ׳×׳׳¨׳™׳</p>
+          <h1>ניהול סטטוס יומי ומיקום</h1>
+          <p className="muted-text">מעקב יומי לפי snapshot לכל תאריך</p>
           {!isReadOnly ? (
             <p className="muted-text auto-refresh-note">
               {systemStatus.telegram_active
-                ? "׳¢׳“׳›׳•׳ ׳׳•׳˜׳•׳׳˜׳™ ׳₪׳¢׳™׳ ׳›׳ 5 ׳©׳ ׳™׳•׳×"
-                : "׳¢׳“׳›׳•׳ ׳׳•׳˜׳•׳׳˜׳™ ׳›׳‘׳•׳™ - ׳‘׳•׳˜ ׳˜׳׳’׳¨׳ ׳׳ ׳₪׳¢׳™׳"}
+                ? "עדכון אוטומטי פעיל כל 5 שניות"
+                : "עדכון אוטומטי כבוי - בוט טלגרם לא פעיל"}
             </p>
           ) : null}
         </div>
 
         <div className="header-actions">
           <div className="date-controls">
-            <label htmlFor="snapshot-date">׳‘׳—׳™׳¨׳× ׳×׳׳¨׳™׳</label>
+            <label htmlFor="snapshot-date">בחירת תאריך</label>
             <input
               id="snapshot-date"
               type="date"
@@ -573,14 +546,14 @@ function App() {
               onClick={() => loadSelectedDate(selectedDate)}
               disabled={loading || !selectedDate}
             >
-              ׳˜׳¢׳ ׳×׳׳¨׳™׳
+              טען תאריך
             </button>
             <button
               className="btn btn-secondary"
               onClick={handleDownloadDayFile}
               disabled={loading || actionLoading || !selectedDate}
             >
-              ׳”׳•׳¨׳“ XLSX ׳׳™׳•׳
+              הורד XLSX ליום
             </button>
           </div>
 
@@ -588,9 +561,9 @@ function App() {
             className="btn btn-primary"
             onClick={openAddModal}
             disabled={isReadOnly || actionLoading}
-            title={isReadOnly ? "׳ ׳™׳×׳ ׳׳”׳•׳¡׳™׳£ ׳׳ ׳©׳™׳ ׳¨׳§ ׳‘׳™׳•׳ ׳”׳ ׳•׳›׳—׳™" : ""}
+            title={isReadOnly ? "ניתן להוסיף אנשים רק ביום הנוכחי" : ""}
           >
-            ׳”׳•׳¡׳£ ׳׳“׳
+            הוסף אדם
           </button>
 
           {isReadOnly ? (
@@ -599,7 +572,7 @@ function App() {
               onClick={handleRestoreHistory}
               disabled={actionLoading}
             >
-              ׳©׳—׳–׳¨ ׳׳™׳•׳ ׳”׳ ׳•׳›׳—׳™
+              שחזר ליום הנוכחי
             </button>
           ) : null}
         </div>
@@ -607,21 +580,21 @@ function App() {
 
       <section className="toolbar-card">
         <div className="filter-group">
-          <label>׳—׳™׳₪׳•׳© ׳׳₪׳™ ׳©׳</label>
+          <label>חיפוש לפי שם</label>
           <input
-            placeholder="׳”׳§׳׳“ ׳©׳..."
+            placeholder="הקלד שם..."
             value={searchTerm}
             onChange={(event) => setSearchTerm(event.target.value)}
           />
         </div>
 
         <div className="filter-group">
-          <label>׳₪׳™׳׳˜׳¨ ׳׳™׳§׳•׳</label>
+          <label>פילטר מיקום</label>
           <select
             value={locationFilter}
             onChange={(event) => setLocationFilter(event.target.value)}
           >
-            <option value="all">׳”׳›׳•׳</option>
+            <option value="all">הכול</option>
             {effectiveLocationOptions.map((location) => (
               <option key={location} value={location}>
                 {location}
@@ -631,23 +604,23 @@ function App() {
         </div>
 
         <div className="filter-group">
-          <label>׳₪׳™׳׳˜׳¨ ׳¡׳˜׳˜׳•׳¡</label>
+          <label>פילטר סטטוס</label>
           <select
             value={statusFilter}
             onChange={(event) => setStatusFilter(event.target.value)}
           >
-            <option value="all">׳”׳›׳•׳</option>
-            <option value={DAILY_STATUS_OK}>׳×׳§׳™׳</option>
-            <option value={DAILY_STATUS_BAD}>׳׳ ׳×׳§׳™׳</option>
-            <option value={DAILY_STATUS_MISSING}>׳׳ ׳”׳•׳–׳</option>
+            <option value="all">הכול</option>
+            <option value={DAILY_STATUS_OK}>תקין</option>
+            <option value={DAILY_STATUS_BAD}>לא תקין</option>
+            <option value={DAILY_STATUS_MISSING}>לא הוזן</option>
           </select>
         </div>
 
         <div className="filter-group location-add-group">
-          <label>׳”׳•׳¡׳₪׳× ׳׳™׳§׳•׳</label>
+          <label>הוספת מיקום</label>
           <div className="location-add-row">
             <input
-              placeholder="׳׳“׳•׳’׳׳”: ׳׳™׳§׳•׳ 6"
+              placeholder={'לדוגמה: "מיקום 6"'}
               value={newLocationName}
               onChange={(event) => setNewLocationName(event.target.value)}
               onKeyDown={(event) => {
@@ -662,7 +635,7 @@ function App() {
               onClick={handleAddLocation}
               disabled={actionLoading}
             >
-              ׳”׳•׳¡׳£
+              הוסף
             </button>
           </div>
           <div className="location-remove-row">
@@ -672,7 +645,7 @@ function App() {
               disabled={deletableLocationOptions.length === 0 || actionLoading}
             >
               {deletableLocationOptions.length === 0 ? (
-                <option value="">׳׳™׳ ׳׳™׳§׳•׳׳™׳ ׳׳׳—׳™׳§׳”</option>
+                <option value="">אין מיקומים למחיקה</option>
               ) : (
                 deletableLocationOptions.map((location) => (
                   <option key={location} value={location}>
@@ -690,15 +663,15 @@ function App() {
                 !locationToDelete
               }
             >
-              ׳׳—׳§ ׳׳™׳§׳•׳
+              מחק מיקום
             </button>
           </div>
         </div>
 
         <div className="filter-group initial-people-group">
-          <label>׳¨׳©׳™׳׳× ׳©׳׳•׳× ׳”׳×׳—׳׳×׳™׳×</label>
+          <label>רשימת שמות התחלתית</label>
           <textarea
-            placeholder={"׳©׳ ׳‘׳›׳ ׳©׳•׳¨׳” ׳׳• ׳׳•׳₪׳¨׳“ ׳‘׳₪׳¡׳™׳§׳™׳\n׳׳“׳•׳’׳׳”:\n׳™׳•׳¡׳™ ׳›׳”׳\n׳“׳ ׳” ׳׳•׳™"}
+            placeholder={"שם בכל שורה או מופרד בפסיקים\nלדוגמה:\nיוסי כהן\nדנה לוי"}
             value={initialPeopleInput}
             onChange={(event) => setInitialPeopleInput(event.target.value)}
             disabled={isReadOnly || actionLoading}
@@ -708,14 +681,14 @@ function App() {
             className="btn btn-secondary"
             onClick={handleAddInitialPeopleList}
             disabled={isReadOnly || actionLoading}
-            title={isReadOnly ? "׳ ׳™׳×׳ ׳׳¢׳“׳›׳ ׳¨׳©׳™׳׳× ׳‘׳¡׳™׳¡ ׳¨׳§ ׳‘׳™׳•׳ ׳”׳ ׳•׳›׳—׳™" : ""}
+            title={isReadOnly ? "ניתן לעדכן רשימת בסיס רק ביום הנוכחי" : ""}
           >
-            ׳”׳•׳¡׳£ ׳¨׳©׳™׳׳× ׳©׳׳•׳×
+            הוסף רשימת שמות
           </button>
         </div>
 
         <div className="filter-group download-range-group">
-          <label>׳”׳•׳¨׳“ ׳”׳›׳ ׳׳₪׳™ ׳˜׳•׳•׳—</label>
+          <label>הורד הכל לפי טווח</label>
           <div className="download-range-row">
             <input
               type="date"
@@ -734,20 +707,20 @@ function App() {
               onClick={handleDownloadRangeFiles}
               disabled={actionLoading}
             >
-              ׳”׳•׳¨׳“ ׳”׳›׳ (ZIP)
+              הורד הכל (ZIP)
             </button>
           </div>
         </div>
 
         <div className="filter-group summary-box">
-          <label>׳¡׳”"׳› ׳׳•׳¦׳’׳™׳</label>
+          <label>סה"כ מוצגים</label>
           <strong>{filteredPeople.length}</strong>
         </div>
       </section>
 
       {availableDates.length > 0 ? (
         <section className="dates-card">
-          <span className="muted-text">׳×׳׳¨׳™׳›׳™׳ ׳–׳׳™׳ ׳™׳:</span>
+          <span className="muted-text">תאריכים זמינים:</span>
           <div className="dates-list">
             {availableDates.map((item) => (
               <button
@@ -764,7 +737,7 @@ function App() {
 
       {isReadOnly ? (
         <div className="history-banner">
-          ׳׳¦׳‘ ׳×׳¦׳•׳’׳× ׳”׳™׳¡׳˜׳•׳¨׳™׳”: ׳”׳ ׳×׳•׳ ׳™׳ ׳”׳ ׳›׳₪׳™ ׳©׳ ׳©׳׳¨׳• ׳‘׳×׳׳¨׳™׳ {snapshot.date}
+          מצב תצוגת היסטוריה: הנתונים הם כפי שנשמרו בתאריך {snapshot.date}
         </div>
       ) : null}
 
@@ -772,7 +745,7 @@ function App() {
 
       <main className="content-area">
         {loading ? (
-          <div className="loading-box">׳˜׳•׳¢׳ ׳ ׳×׳•׳ ׳™׳...</div>
+          <div className="loading-box">טוען נתונים...</div>
         ) : (
           <PersonTable
             people={filteredPeople}

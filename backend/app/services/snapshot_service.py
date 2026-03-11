@@ -32,16 +32,17 @@ SNAPSHOT_COLUMNS = [
 ]
 MASTER_COLUMNS = ["person_id", "full_name"]
 LOCATION_COLUMNS = ["location", "created_at"]
-# Backward compatibility for historical files that still contain legacy names.
+# Backward compatibility for legacy values from old files.
 LOCATION_ALIASES = {
-    "׳‘׳™׳—׳™׳“׳”": "׳׳™׳§׳•׳ 1",
+    "יחידה": "מיקום 1",
 }
-VALID_DAILY_STATUS = {"׳×׳§׳™׳", "׳׳ ׳×׳§׳™׳", "׳׳ ׳”׳•׳–׳"}
-VALID_SELF_DAILY_STATUS = {"׳×׳§׳™׳", "׳׳ ׳×׳§׳™׳"}
-DEFAULT_LOCATION = "׳‘׳‘׳™׳×"
-DEFAULT_DAILY_STATUS = "\u05dc\u05d0 \u05d4\u05d5\u05d6\u05df"
+DAILY_STATUS_ALIASES: dict[str, str] = {}
+VALID_DAILY_STATUS = {"תקין", "לא תקין", "לא הוזן"}
+VALID_SELF_DAILY_STATUS = {"תקין", "לא תקין"}
+DEFAULT_LOCATION = "בבית"
+DEFAULT_DAILY_STATUS = "לא הוזן"
 MAX_LOCATION_LENGTH = 80
-DEFAULT_LOCATION_OPTIONS = ["׳‘׳‘׳™׳×", "׳׳™׳§׳•׳ 1", "׳׳™׳§׳•׳ 2", "׳׳™׳§׳•׳ 3", "׳׳™׳§׳•׳ 4", "׳׳™׳§׳•׳ 5"]
+DEFAULT_LOCATION_OPTIONS = ["בבית", "מיקום 1", "מיקום 2", "מיקום 3", "מיקום 4", "מיקום 5"]
 
 
 @dataclass(frozen=True)
@@ -720,7 +721,7 @@ class SnapshotService:
 
         normalized = normalized[SNAPSHOT_COLUMNS].copy()
         normalized["person_id"] = self._normalize_person_ids(normalized["person_id"].tolist())
-        normalized["full_name"] = normalized["full_name"].astype(str).map(lambda x: x.strip() or "׳׳׳ ׳©׳")
+        normalized["full_name"] = normalized["full_name"].astype(str).map(lambda x: x.strip() or "ללא שם")
         normalized["location"] = normalized["location"].map(self._normalize_location)
         normalized["daily_status"] = normalized["daily_status"].map(self._normalize_daily_status)
         normalized["self_location"] = normalized["self_location"].map(self._normalize_self_location)
@@ -835,6 +836,8 @@ class SnapshotService:
     def _normalize_daily_status(self, value: object) -> str:
         """Normalize daily status to known values with safe default."""
         cleaned = str(value).strip() if value is not None else ""
+        if cleaned in DAILY_STATUS_ALIASES:
+            cleaned = DAILY_STATUS_ALIASES[cleaned]
         return cleaned if cleaned in VALID_DAILY_STATUS else DEFAULT_DAILY_STATUS
 
     def _normalize_self_location(self, value: object) -> str:
@@ -849,13 +852,17 @@ class SnapshotService:
     def _normalize_self_daily_status(self, value: object) -> str:
         """Normalize self-reported status while allowing empty value."""
         cleaned = str(value).strip() if value is not None else ""
+        if cleaned in DAILY_STATUS_ALIASES:
+            cleaned = DAILY_STATUS_ALIASES[cleaned]
         return cleaned if cleaned in VALID_SELF_DAILY_STATUS else ""
 
     def _normalize_required_daily_status(self, value: object) -> str:
         """Strictly validate required status value for self-report flows."""
         cleaned = str(value).strip() if value is not None else ""
+        if cleaned in DAILY_STATUS_ALIASES:
+            cleaned = DAILY_STATUS_ALIASES[cleaned]
         if cleaned not in VALID_SELF_DAILY_STATUS:
-            raise ValidationError("daily_status must be either '׳×׳§׳™׳' or '׳׳ ׳×׳§׳™׳'")
+            raise ValidationError("daily_status must be either 'תקין' or 'לא תקין'")
         return cleaned
 
     def _normalize_notes(self, value: object) -> str:

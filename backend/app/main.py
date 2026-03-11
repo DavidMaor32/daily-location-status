@@ -131,3 +131,4 @@ def health() -> dict:
 def system_status() -> SystemStatusResponse:
     """Return current runtime status for optional integrations."""
     return SystemStatusResponse(**get_system_status())
+

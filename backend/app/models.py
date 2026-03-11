@@ -219,3 +219,4 @@ class InitialPeopleListResponse(BaseModel):
     skipped_count: int
     created_names: list[str]
     skipped_names: list[str]
+

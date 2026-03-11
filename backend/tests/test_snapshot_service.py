@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import date, timedelta
 from pathlib import Path
@@ -183,3 +183,4 @@ def test_update_self_report_rejects_too_long_location(tmp_path: Path) -> None:
         assert False, "Expected ValidationError for overly long self_location"
     except ValidationError as exc:
         assert "self_location" in str(exc)
+
