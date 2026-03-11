@@ -8,6 +8,8 @@ jobs:
   build-test:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      PYTHONPATH: ${{ github.workspace }}/backend
 
     steps:
       - name: Checkout
@@ -32,16 +34,13 @@ jobs:
           pip install pyflakes vulture
 
       - name: Run backend tests
-        working-directory: backend
-        run: pytest -q
+        run: python -m pytest backend/tests -q
 
       - name: Lint backend with pyflakes
-        working-directory: backend
-        run: python -m pyflakes app tests
+        run: python -m pyflakes backend/app backend/tests
 
       - name: Scan dead code with vulture
-        working-directory: backend
-        run: vulture app tests --min-confidence 80
+        run: python -m vulture backend/app backend/tests --min-confidence 80
 
       - name: Install frontend dependencies
         working-directory: frontend
