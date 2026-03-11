@@ -15,23 +15,25 @@ logger = logging.getLogger(__name__)
 DEFAULT_ENV_PATH = BASE_DIR / ".env"
 
 
-def _load_local_env_file(env_path: Path = DEFAULT_ENV_PATH) -> None:
+def _load_local_env_file(env_path: Path | None = None) -> None:
     """
     Load KEY=VALUE pairs from local .env file into process environment.
 
     Existing environment variables are not overwritten.
     This keeps secrets out of YAML files tracked in git.
     """
-    if not env_path.exists():
+    resolved_env_path = env_path or DEFAULT_ENV_PATH
+    if not resolved_env_path.exists():
         return
 
-    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
+    for raw_line in resolved_env_path.read_text(encoding="utf-8").splitlines():
+        # Handle UTF-8 BOM and optional "export KEY=VALUE" syntax.
+        line = raw_line.lstrip("\ufeff").strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
 
         key, raw_value = line.split("=", 1)
-        key = key.strip()
+        key = key.strip().removeprefix("export ").strip()
         if not key:
             continue
 

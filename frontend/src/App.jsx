@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 
 import {
   addInitialPeopleList,
@@ -38,7 +38,7 @@ const DEFAULT_SYSTEM_STATUS = {
   telegram_running: false,
   telegram_healthy: false,
   telegram_active: false,
-  telegram_message: "בוט טלגרם לא פעיל",
+  telegram_message: "׳‘׳•׳˜ ׳˜׳׳’׳¨׳ ׳׳ ׳₪׳¢׳™׳",
   telegram_last_error: null,
 };
 
@@ -50,6 +50,48 @@ function normalizeSystemStatus(payload) {
     telegram_active: Boolean(payload?.telegram_active),
     telegram_message:
       payload?.telegram_message || DEFAULT_SYSTEM_STATUS.telegram_message,
+  };
+}
+
+// Convert unknown thrown value into a stable UI error message.
+function getErrorMessage(error, fallbackMessage) {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  if (typeof error === "string" && error.trim()) {
+    return error;
+  }
+  if (typeof error?.detail === "string" && error.detail.trim()) {
+    return error.detail;
+  }
+  return fallbackMessage;
+}
+
+// Normalize snapshot payload so corrupted/missing fields will not break UI rendering.
+function normalizeSnapshotPayload(payload, fallbackDate) {
+  const safeDate =
+    typeof payload?.date === "string" && payload.date ? payload.date : fallbackDate;
+  const rawPeople = Array.isArray(payload?.people) ? payload.people : [];
+
+  const normalizedPeople = rawPeople
+    .filter((item) => item && typeof item === "object")
+    .map((person) => ({
+      person_id: String(person.person_id || ""),
+      full_name: String(person.full_name || ""),
+      location: String(person.location || ""),
+      daily_status: String(person.daily_status || ""),
+      self_location: person.self_location ? String(person.self_location) : "",
+      self_daily_status: person.self_daily_status
+        ? String(person.self_daily_status)
+        : "",
+      notes: person.notes ? String(person.notes) : "",
+      last_updated: person.last_updated ? String(person.last_updated) : "",
+      date: typeof person.date === "string" && person.date ? person.date : safeDate,
+    }));
+
+  return {
+    date: safeDate,
+    people: normalizedPeople,
   };
 }
 
@@ -88,7 +130,9 @@ function App() {
 
   // Merge locations list from backend with values found in current snapshot.
   const effectiveLocationOptions = useMemo(() => {
-    const locationsFromSnapshot = snapshot.people.map((person) => person.location);
+    const locationsFromSnapshot = snapshot.people.map((person) =>
+      String(person?.location || "")
+    );
     return uniqueLocations([
       ...DEFAULT_LOCATION_OPTIONS,
       ...locationOptions,
@@ -96,33 +140,39 @@ function App() {
     ]);
   }, [locationOptions, snapshot.people]);
 
-  // "בית" הוא מיקום ברירת מחדל חובה ולכן לא מוצג ברשימת מחיקה.
+  // "׳‘׳™׳×" ׳”׳•׳ ׳׳™׳§׳•׳ ׳‘׳¨׳™׳¨׳× ׳׳—׳“׳ ׳—׳•׳‘׳” ׳•׳׳›׳ ׳׳ ׳׳•׳¦׳’ ׳‘׳¨׳©׳™׳׳× ׳׳—׳™׳§׳”.
   const deletableLocationOptions = useMemo(() => {
-    return locationOptions.filter((location) => location !== "בבית");
+    return locationOptions.filter((location) => location !== "׳‘׳‘׳™׳×");
   }, [locationOptions]);
 
   // Build filtered and sorted table rows based on search/filters.
   const filteredPeople = useMemo(() => {
     return snapshot.people
       .filter((person) => {
+        const fullName = String(person?.full_name || "");
+        const location = String(person?.location || "");
+        const dailyStatus = String(person?.daily_status || "");
+
         if (
           searchTerm &&
-          !person.full_name.toLowerCase().includes(searchTerm.toLowerCase())
+          !fullName.toLowerCase().includes(searchTerm.toLowerCase())
         ) {
           return false;
         }
 
-        if (locationFilter !== "all" && person.location !== locationFilter) {
+        if (locationFilter !== "all" && location !== locationFilter) {
           return false;
         }
 
-        if (statusFilter !== "all" && person.daily_status !== statusFilter) {
+        if (statusFilter !== "all" && dailyStatus !== statusFilter) {
           return false;
         }
 
         return true;
       })
-      .sort((a, b) => a.full_name.localeCompare(b.full_name, "he"));
+      .sort((a, b) =>
+        String(a?.full_name || "").localeCompare(String(b?.full_name || ""), "he")
+      );
   }, [snapshot.people, searchTerm, locationFilter, statusFilter]);
 
   // Initial loading sequence when page is mounted.
@@ -151,8 +201,12 @@ function App() {
     const timerId = window.setInterval(async () => {
       try {
         const liveSnapshot = await fetchTodaySnapshot();
+        const normalizedLiveSnapshot = normalizeSnapshotPayload(
+          liveSnapshot,
+          todayString
+        );
         setSnapshot((current) =>
-          current.date === todayString ? liveSnapshot : current
+          current.date === todayString ? normalizedLiveSnapshot : current
         );
       } catch {
         // Ignore periodic refresh failures to avoid noisy UI interruptions.
@@ -178,14 +232,18 @@ function App() {
         fetchLocations(),
         fetchSystemStatus().catch(() => DEFAULT_SYSTEM_STATUS),
       ]);
-      setSnapshot(todaySnapshot);
-      setSelectedDate(todaySnapshot.date);
+      const normalizedTodaySnapshot = normalizeSnapshotPayload(
+        todaySnapshot,
+        todayString
+      );
+      setSnapshot(normalizedTodaySnapshot);
+      setSelectedDate(normalizedTodaySnapshot.date);
       setAvailableDates(datesResponse.dates || []);
       setSystemStatus(normalizeSystemStatus(systemStatusResponse));
       applyLocationOptions(locationsResponse.locations || []);
     } catch (err) {
       setSystemStatus(DEFAULT_SYSTEM_STATUS);
-      setError(err.message || "טעינת הנתונים נכשלה");
+      setError(getErrorMessage(err, "׳˜׳¢׳™׳ ׳× ׳”׳ ׳×׳•׳ ׳™׳ ׳ ׳›׳©׳׳”"));
     } finally {
       setLoading(false);
     }
@@ -199,10 +257,11 @@ function App() {
 
   // Keep one canonical way to merge locations from backend with defaults.
   function applyLocationOptions(apiLocations) {
+    const safeApiLocations = Array.isArray(apiLocations) ? apiLocations : [];
     setLocationOptions(
       uniqueLocations([
         ...DEFAULT_LOCATION_OPTIONS,
-        ...(apiLocations || []),
+        ...safeApiLocations,
       ])
     );
   }
@@ -219,12 +278,13 @@ function App() {
           : fetchSnapshotByDate(dateValue),
         fetchSystemStatus().catch(() => systemStatus),
       ]);
-      setSnapshot(payload);
-      setSelectedDate(payload.date);
+      const normalizedPayload = normalizeSnapshotPayload(payload, dateValue);
+      setSnapshot(normalizedPayload);
+      setSelectedDate(normalizedPayload.date);
       setSystemStatus(normalizeSystemStatus(systemStatusResponse));
       await refreshDates();
     } catch (err) {
-      setError(err.message || "לא ניתן לטעון את התאריך המבוקש");
+      setError(getErrorMessage(err, "׳׳ ׳ ׳™׳×׳ ׳׳˜׳¢׳•׳ ׳׳× ׳”׳×׳׳¨׳™׳ ׳”׳׳‘׳•׳§׳©"));
     } finally {
       setLoading(false);
     }
@@ -245,7 +305,7 @@ function App() {
   // Download xlsx file for the currently selected date.
   async function handleDownloadDayFile() {
     if (!selectedDate) {
-      setError("יש לבחור תאריך להורדה");
+      setError("׳™׳© ׳׳‘׳—׳•׳¨ ׳×׳׳¨׳™׳ ׳׳”׳•׳¨׳“׳”");
       return;
     }
 
@@ -255,7 +315,7 @@ function App() {
       const { blob, filename } = await downloadDaySnapshot(selectedDate);
       triggerBlobDownload(blob, filename);
     } catch (err) {
-      setError(err.message || "הורדת קובץ היום נכשלה");
+      setError(getErrorMessage(err, "׳”׳•׳¨׳“׳× ׳§׳•׳‘׳¥ ׳”׳™׳•׳ ׳ ׳›׳©׳׳”"));
     } finally {
       setActionLoading(false);
     }
@@ -264,12 +324,12 @@ function App() {
   // Download zip file with all xlsx snapshots in selected date range.
   async function handleDownloadRangeFiles() {
     if (!downloadFromDate || !downloadToDate) {
-      setError("יש לבחור טווח תאריכים מלא");
+      setError("׳™׳© ׳׳‘׳—׳•׳¨ ׳˜׳•׳•׳— ׳×׳׳¨׳™׳›׳™׳ ׳׳׳");
       return;
     }
 
     if (downloadFromDate > downloadToDate) {
-      setError("תאריך התחלה חייב להיות קטן או שווה לתאריך סיום");
+      setError("׳×׳׳¨׳™׳ ׳”׳×׳—׳׳” ׳—׳™׳™׳‘ ׳׳”׳™׳•׳× ׳§׳˜׳ ׳׳• ׳©׳•׳•׳” ׳׳×׳׳¨׳™׳ ׳¡׳™׳•׳");
       return;
     }
 
@@ -282,7 +342,7 @@ function App() {
       );
       triggerBlobDownload(blob, filename);
     } catch (err) {
-      setError(err.message || "הורדת קבצי הטווח נכשלה");
+      setError(getErrorMessage(err, "׳”׳•׳¨׳“׳× ׳§׳‘׳¦׳™ ׳”׳˜׳•׳•׳— ׳ ׳›׳©׳׳”"));
     } finally {
       setActionLoading(false);
     }
@@ -297,7 +357,7 @@ function App() {
       await quickUpdatePerson(personId, patch);
       await loadSelectedDate(todayString);
     } catch (err) {
-      setError(err.message || "עדכון מהיר נכשל");
+      setError(getErrorMessage(err, "׳¢׳“׳›׳•׳ ׳׳”׳™׳¨ ׳ ׳›׳©׳"));
     } finally {
       setActionLoading(false);
     }
@@ -307,12 +367,12 @@ function App() {
   async function handleAddLocation() {
     const normalized = normalizeLocationName(newLocationName);
     if (!normalized) {
-      setError("יש להזין שם מיקום לפני הוספה");
+      setError("׳™׳© ׳׳”׳–׳™׳ ׳©׳ ׳׳™׳§׳•׳ ׳׳₪׳ ׳™ ׳”׳•׳¡׳₪׳”");
       return;
     }
 
     if (effectiveLocationOptions.includes(normalized)) {
-      setError("המיקום כבר קיים ברשימה");
+      setError("׳”׳׳™׳§׳•׳ ׳›׳‘׳¨ ׳§׳™׳™׳ ׳‘׳¨׳©׳™׳׳”");
       return;
     }
 
@@ -324,7 +384,7 @@ function App() {
       applyLocationOptions(response.locations || []);
       setNewLocationName("");
     } catch (err) {
-      setError(err.message || "הוספת מיקום נכשלה");
+      setError(getErrorMessage(err, "׳”׳•׳¡׳₪׳× ׳׳™׳§׳•׳ ׳ ׳›׳©׳׳”"));
     } finally {
       setActionLoading(false);
     }
@@ -334,11 +394,11 @@ function App() {
   async function handleDeleteLocation() {
     const normalized = normalizeLocationName(locationToDelete);
     if (!normalized) {
-      setError("יש לבחור מיקום למחיקה");
+      setError("׳™׳© ׳׳‘׳—׳•׳¨ ׳׳™׳§׳•׳ ׳׳׳—׳™׳§׳”");
       return;
     }
 
-    const approved = window.confirm(`למחוק את המיקום "${normalized}"?`);
+    const approved = window.confirm(`׳׳׳—׳•׳§ ׳׳× ׳”׳׳™׳§׳•׳ "${normalized}"?`);
     if (!approved) {
       return;
     }
@@ -354,7 +414,7 @@ function App() {
         setLocationFilter("all");
       }
     } catch (err) {
-      setError(err.message || "מחיקת מיקום נכשלה");
+      setError(getErrorMessage(err, "׳׳—׳™׳§׳× ׳׳™׳§׳•׳ ׳ ׳›׳©׳׳”"));
     } finally {
       setActionLoading(false);
     }
@@ -368,7 +428,7 @@ function App() {
       .filter((item) => item.length >= 2);
 
     if (names.length === 0) {
-      setError("יש להזין לפחות שם מלא אחד (לפחות 2 תווים)");
+      setError("׳™׳© ׳׳”׳–׳™׳ ׳׳₪׳—׳•׳× ׳©׳ ׳׳׳ ׳׳—׳“ (׳׳₪׳—׳•׳× 2 ׳×׳•׳•׳™׳)");
       return;
     }
 
@@ -383,10 +443,10 @@ function App() {
       const createdCount = Number(response?.created_count || 0);
       const skippedCount = Number(response?.skipped_count || 0);
       window.alert(
-        `הרשימה נקלטה בהצלחה.\nנוספו: ${createdCount}\nדולגו (כבר קיימים): ${skippedCount}`
+        `׳”׳¨׳©׳™׳׳” ׳ ׳§׳׳˜׳” ׳‘׳”׳¦׳׳—׳”.\n׳ ׳•׳¡׳₪׳•: ${createdCount}\n׳“׳•׳׳’׳• (׳›׳‘׳¨ ׳§׳™׳™׳׳™׳): ${skippedCount}`
       );
     } catch (err) {
-      setError(err.message || "הוספת רשימת שמות התחלתית נכשלה");
+      setError(getErrorMessage(err, "׳”׳•׳¡׳₪׳× ׳¨׳©׳™׳׳× ׳©׳׳•׳× ׳”׳×׳—׳׳×׳™׳× ׳ ׳›׳©׳׳”"));
     } finally {
       setActionLoading(false);
     }
@@ -422,7 +482,7 @@ function App() {
       setEditingPerson(null);
       await loadSelectedDate(todayString);
     } catch (err) {
-      setError(err.message || "שמירת הנתונים נכשלה");
+      setError(getErrorMessage(err, "׳©׳׳™׳¨׳× ׳”׳ ׳×׳•׳ ׳™׳ ׳ ׳›׳©׳׳”"));
     } finally {
       setActionLoading(false);
     }
@@ -435,7 +495,7 @@ function App() {
     }
 
     const approved = window.confirm(
-      `למחוק את ${editingPerson.full_name} מרשימת האנשים?`
+      `׳׳׳—׳•׳§ ׳׳× ${editingPerson.full_name} ׳׳¨׳©׳™׳׳× ׳”׳׳ ׳©׳™׳?`
     );
     if (!approved) {
       return;
@@ -450,7 +510,7 @@ function App() {
       setEditingPerson(null);
       await loadSelectedDate(todayString);
     } catch (err) {
-      setError(err.message || "מחיקת אדם נכשלה");
+      setError(getErrorMessage(err, "׳׳—׳™׳§׳× ׳׳“׳ ׳ ׳›׳©׳׳”"));
     } finally {
       setActionLoading(false);
     }
@@ -463,7 +523,7 @@ function App() {
     }
 
     const approved = window.confirm(
-      `האם לשחזר את הנתונים של ${snapshot.date} לתוך היום (${todayString})?`
+      `׳”׳׳ ׳׳©׳—׳–׳¨ ׳׳× ׳”׳ ׳×׳•׳ ׳™׳ ׳©׳ ${snapshot.date} ׳׳×׳•׳ ׳”׳™׳•׳ (${todayString})?`
     );
 
     if (!approved) {
@@ -477,7 +537,7 @@ function App() {
       await restoreHistoryToToday(snapshot.date);
       await loadSelectedDate(todayString);
     } catch (err) {
-      setError(err.message || "שחזור ההיסטוריה נכשל");
+      setError(getErrorMessage(err, "׳©׳—׳–׳•׳¨ ׳”׳”׳™׳¡׳˜׳•׳¨׳™׳” ׳ ׳›׳©׳"));
     } finally {
       setActionLoading(false);
     }
@@ -487,20 +547,20 @@ function App() {
     <div className="app-shell" dir="rtl">
       <header className="header-card">
         <div>
-          <h1>ניהול סטטוס יומי ומיקום</h1>
-          <p className="muted-text">מעקב יומי לפי snapshot לכל תאריך</p>
+          <h1>׳ ׳™׳”׳•׳ ׳¡׳˜׳˜׳•׳¡ ׳™׳•׳׳™ ׳•׳׳™׳§׳•׳</h1>
+          <p className="muted-text">׳׳¢׳§׳‘ ׳™׳•׳׳™ ׳׳₪׳™ snapshot ׳׳›׳ ׳×׳׳¨׳™׳</p>
           {!isReadOnly ? (
             <p className="muted-text auto-refresh-note">
               {systemStatus.telegram_active
-                ? "עדכון אוטומטי פעיל כל 5 שניות"
-                : "עדכון אוטומטי כבוי - בוט טלגרם לא פעיל"}
+                ? "׳¢׳“׳›׳•׳ ׳׳•׳˜׳•׳׳˜׳™ ׳₪׳¢׳™׳ ׳›׳ 5 ׳©׳ ׳™׳•׳×"
+                : "׳¢׳“׳›׳•׳ ׳׳•׳˜׳•׳׳˜׳™ ׳›׳‘׳•׳™ - ׳‘׳•׳˜ ׳˜׳׳’׳¨׳ ׳׳ ׳₪׳¢׳™׳"}
             </p>
           ) : null}
         </div>
 
         <div className="header-actions">
           <div className="date-controls">
-            <label htmlFor="snapshot-date">בחירת תאריך</label>
+            <label htmlFor="snapshot-date">׳‘׳—׳™׳¨׳× ׳×׳׳¨׳™׳</label>
             <input
               id="snapshot-date"
               type="date"
@@ -513,14 +573,14 @@ function App() {
               onClick={() => loadSelectedDate(selectedDate)}
               disabled={loading || !selectedDate}
             >
-              טען תאריך
+              ׳˜׳¢׳ ׳×׳׳¨׳™׳
             </button>
             <button
               className="btn btn-secondary"
               onClick={handleDownloadDayFile}
               disabled={loading || actionLoading || !selectedDate}
             >
-              הורד XLSX ליום
+              ׳”׳•׳¨׳“ XLSX ׳׳™׳•׳
             </button>
           </div>
 
@@ -528,9 +588,9 @@ function App() {
             className="btn btn-primary"
             onClick={openAddModal}
             disabled={isReadOnly || actionLoading}
-            title={isReadOnly ? "ניתן להוסיף אנשים רק ביום הנוכחי" : ""}
+            title={isReadOnly ? "׳ ׳™׳×׳ ׳׳”׳•׳¡׳™׳£ ׳׳ ׳©׳™׳ ׳¨׳§ ׳‘׳™׳•׳ ׳”׳ ׳•׳›׳—׳™" : ""}
           >
-            הוסף אדם
+            ׳”׳•׳¡׳£ ׳׳“׳
           </button>
 
           {isReadOnly ? (
@@ -539,7 +599,7 @@ function App() {
               onClick={handleRestoreHistory}
               disabled={actionLoading}
             >
-              שחזר ליום הנוכחי
+              ׳©׳—׳–׳¨ ׳׳™׳•׳ ׳”׳ ׳•׳›׳—׳™
             </button>
           ) : null}
         </div>
@@ -547,21 +607,21 @@ function App() {
 
       <section className="toolbar-card">
         <div className="filter-group">
-          <label>חיפוש לפי שם</label>
+          <label>׳—׳™׳₪׳•׳© ׳׳₪׳™ ׳©׳</label>
           <input
-            placeholder="הקלד שם..."
+            placeholder="׳”׳§׳׳“ ׳©׳..."
             value={searchTerm}
             onChange={(event) => setSearchTerm(event.target.value)}
           />
         </div>
 
         <div className="filter-group">
-          <label>פילטר מיקום</label>
+          <label>׳₪׳™׳׳˜׳¨ ׳׳™׳§׳•׳</label>
           <select
             value={locationFilter}
             onChange={(event) => setLocationFilter(event.target.value)}
           >
-            <option value="all">הכול</option>
+            <option value="all">׳”׳›׳•׳</option>
             {effectiveLocationOptions.map((location) => (
               <option key={location} value={location}>
                 {location}
@@ -571,23 +631,23 @@ function App() {
         </div>
 
         <div className="filter-group">
-          <label>פילטר סטטוס</label>
+          <label>׳₪׳™׳׳˜׳¨ ׳¡׳˜׳˜׳•׳¡</label>
           <select
             value={statusFilter}
             onChange={(event) => setStatusFilter(event.target.value)}
           >
-            <option value="all">הכול</option>
-            <option value={DAILY_STATUS_OK}>תקין</option>
-            <option value={DAILY_STATUS_BAD}>לא תקין</option>
-            <option value={DAILY_STATUS_MISSING}>לא הוזן</option>
+            <option value="all">׳”׳›׳•׳</option>
+            <option value={DAILY_STATUS_OK}>׳×׳§׳™׳</option>
+            <option value={DAILY_STATUS_BAD}>׳׳ ׳×׳§׳™׳</option>
+            <option value={DAILY_STATUS_MISSING}>׳׳ ׳”׳•׳–׳</option>
           </select>
         </div>
 
         <div className="filter-group location-add-group">
-          <label>הוספת מיקום</label>
+          <label>׳”׳•׳¡׳₪׳× ׳׳™׳§׳•׳</label>
           <div className="location-add-row">
             <input
-              placeholder="לדוגמה: מיקום 6"
+              placeholder="׳׳“׳•׳’׳׳”: ׳׳™׳§׳•׳ 6"
               value={newLocationName}
               onChange={(event) => setNewLocationName(event.target.value)}
               onKeyDown={(event) => {
@@ -602,7 +662,7 @@ function App() {
               onClick={handleAddLocation}
               disabled={actionLoading}
             >
-              הוסף
+              ׳”׳•׳¡׳£
             </button>
           </div>
           <div className="location-remove-row">
@@ -612,7 +672,7 @@ function App() {
               disabled={deletableLocationOptions.length === 0 || actionLoading}
             >
               {deletableLocationOptions.length === 0 ? (
-                <option value="">אין מיקומים למחיקה</option>
+                <option value="">׳׳™׳ ׳׳™׳§׳•׳׳™׳ ׳׳׳—׳™׳§׳”</option>
               ) : (
                 deletableLocationOptions.map((location) => (
                   <option key={location} value={location}>
@@ -630,15 +690,15 @@ function App() {
                 !locationToDelete
               }
             >
-              מחק מיקום
+              ׳׳—׳§ ׳׳™׳§׳•׳
             </button>
           </div>
         </div>
 
         <div className="filter-group initial-people-group">
-          <label>רשימת שמות התחלתית</label>
+          <label>׳¨׳©׳™׳׳× ׳©׳׳•׳× ׳”׳×׳—׳׳×׳™׳×</label>
           <textarea
-            placeholder={"שם בכל שורה או מופרד בפסיקים\nלדוגמה:\nיוסי כהן\nדנה לוי"}
+            placeholder={"׳©׳ ׳‘׳›׳ ׳©׳•׳¨׳” ׳׳• ׳׳•׳₪׳¨׳“ ׳‘׳₪׳¡׳™׳§׳™׳\n׳׳“׳•׳’׳׳”:\n׳™׳•׳¡׳™ ׳›׳”׳\n׳“׳ ׳” ׳׳•׳™"}
             value={initialPeopleInput}
             onChange={(event) => setInitialPeopleInput(event.target.value)}
             disabled={isReadOnly || actionLoading}
@@ -648,14 +708,14 @@ function App() {
             className="btn btn-secondary"
             onClick={handleAddInitialPeopleList}
             disabled={isReadOnly || actionLoading}
-            title={isReadOnly ? "ניתן לעדכן רשימת בסיס רק ביום הנוכחי" : ""}
+            title={isReadOnly ? "׳ ׳™׳×׳ ׳׳¢׳“׳›׳ ׳¨׳©׳™׳׳× ׳‘׳¡׳™׳¡ ׳¨׳§ ׳‘׳™׳•׳ ׳”׳ ׳•׳›׳—׳™" : ""}
           >
-            הוסף רשימת שמות
+            ׳”׳•׳¡׳£ ׳¨׳©׳™׳׳× ׳©׳׳•׳×
           </button>
         </div>
 
         <div className="filter-group download-range-group">
-          <label>הורד הכל לפי טווח</label>
+          <label>׳”׳•׳¨׳“ ׳”׳›׳ ׳׳₪׳™ ׳˜׳•׳•׳—</label>
           <div className="download-range-row">
             <input
               type="date"
@@ -674,20 +734,20 @@ function App() {
               onClick={handleDownloadRangeFiles}
               disabled={actionLoading}
             >
-              הורד הכל (ZIP)
+              ׳”׳•׳¨׳“ ׳”׳›׳ (ZIP)
             </button>
           </div>
         </div>
 
         <div className="filter-group summary-box">
-          <label>סה"כ מוצגים</label>
+          <label>׳¡׳”"׳› ׳׳•׳¦׳’׳™׳</label>
           <strong>{filteredPeople.length}</strong>
         </div>
       </section>
 
       {availableDates.length > 0 ? (
         <section className="dates-card">
-          <span className="muted-text">תאריכים זמינים:</span>
+          <span className="muted-text">׳×׳׳¨׳™׳›׳™׳ ׳–׳׳™׳ ׳™׳:</span>
           <div className="dates-list">
             {availableDates.map((item) => (
               <button
@@ -704,7 +764,7 @@ function App() {
 
       {isReadOnly ? (
         <div className="history-banner">
-          מצב תצוגת היסטוריה: הנתונים הם כפי שנשמרו בתאריך {snapshot.date}
+          ׳׳¦׳‘ ׳×׳¦׳•׳’׳× ׳”׳™׳¡׳˜׳•׳¨׳™׳”: ׳”׳ ׳×׳•׳ ׳™׳ ׳”׳ ׳›׳₪׳™ ׳©׳ ׳©׳׳¨׳• ׳‘׳×׳׳¨׳™׳ {snapshot.date}
         </div>
       ) : null}
 
@@ -712,7 +772,7 @@ function App() {
 
       <main className="content-area">
         {loading ? (
-          <div className="loading-box">טוען נתונים...</div>
+          <div className="loading-box">׳˜׳•׳¢׳ ׳ ׳×׳•׳ ׳™׳...</div>
         ) : (
           <PersonTable
             people={filteredPeople}
@@ -747,3 +807,4 @@ function App() {
 }
 
 export default App;
+

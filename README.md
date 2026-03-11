@@ -11,6 +11,34 @@
 - בתחילת יום חדש נוצרת אוטומטית קובץ XLSX יומי חדש, שמעתיק מה-master את רשימת האנשים בלבד.
 - בקובץ היומי החדש שדות העבודה מאותחלים לערכי ברירת מחדל (כדי להתחיל עבודה נקייה ליום החדש).
 
+## אבטחה ויציבות
+
+- טוקנים וסודות נטענים מ-`.env` כדי לא לשמור אותם בקוד שמועלה ל-Git.
+- שגיאות שרת לא צפויות מוחזרות כלקוח כ-`Internal server error` בלי לחשוף פרטים פנימיים.
+- קלט עצמי (כולל מבוט טלגרם) עובר ולידציה, כולל מגבלת אורך למיקום.
+- ה-Frontend מנרמל payload מה-API כדי למנוע קריסה גם אם מתקבל מבנה לא צפוי.
+
+## מבנה קוד מודולרי
+
+Backend:
+
+- `backend/app/main.py` - אתחול FastAPI, lifespan, middlewares, ו-health/status.
+- `backend/app/api/dependencies.py` - תלויות משותפות (`Settings`, `SnapshotService`, parsing לתאריכים, הורדת קבצים).
+- `backend/app/api/routers/snapshot.py` - endpoints של snapshots והיסטוריה.
+- `backend/app/api/routers/people.py` - endpoints של ניהול אנשים והזנה עצמאית.
+- `backend/app/api/routers/locations.py` - endpoints של ניהול מיקומים.
+- `backend/app/api/routers/export.py` - endpoints של הורדת XLSX/ZIP.
+- `backend/app/services/snapshot_service.py` - לוגיקה עסקית של snapshots, master, ו-Excel.
+- `backend/app/services/telegram_bot_service.py` - לוגיקה של בוט טלגרם.
+
+Frontend:
+
+- `frontend/src/App.jsx` - עמוד ראשי וניהול state.
+- `frontend/src/api/client.js` - קריאות API מרוכזות.
+- `frontend/src/components/PersonTable.jsx` - טבלת תצוגה ועדכונים מהירים.
+- `frontend/src/components/PersonFormModal.jsx` - טופס הוספה/עריכה/מחיקה.
+- `frontend/src/constants/*.js` - קבועים משותפים לסטטוסים ומיקומים.
+
 ## מה המערכת יודעת לעשות
 
 - ניהול טבלת אנשים יומית (מיקום + סטטוס יומי + הערות).
@@ -37,6 +65,10 @@
 
 - `config/app_config.yaml`
 - `.env` (רק לסודות)
+
+דוגמה ל-`.env`:
+
+- `TELEGRAM_BOT_TOKEN=YOUR_TELEGRAM_BOT_TOKEN`
 
 ערכי ברירת מחדל מומלצים לפיתוח מקומי:
 
@@ -210,12 +242,16 @@ npm run build
 
 ## בדיקות אוטומטיות
 
-נוספו בדיקות business logic עבור `SnapshotService`:
+נוספו בדיקות business logic עבור `SnapshotService` וקונפיגורציה:
 
 - יצירת snapshot ליום חדש עם איפוס שדות יומיים
 - שחזור `exact_snapshot` כולל אנשים שנמחקו מה-master
 - שחזור `master_only` עם אנשים פעילים בלבד
 - הוספת רשימת שמות התחלתית עם מניעת כפילויות
+- יצירת snapshot אוטומטית לתאריך עבר חסר
+- טעינת `.env` (כולל BOM / `export KEY=...`)
+- עדיפות `TELEGRAM_BOT_TOKEN` על פני token ב-YAML
+- חסימת `self_location` ארוך מדי בעדכון עצמי
 
 הרצה:
 
@@ -228,6 +264,7 @@ pytest -q
 קובץ בדיקות:
 
 - `backend/tests/test_snapshot_service.py`
+- `backend/tests/test_config_env.py`
 
 ## תקלות נפוצות
 

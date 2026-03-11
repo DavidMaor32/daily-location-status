@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import logging
 import threading
@@ -34,13 +34,14 @@ MASTER_COLUMNS = ["person_id", "full_name"]
 LOCATION_COLUMNS = ["location", "created_at"]
 # Backward compatibility for historical files that still contain legacy names.
 LOCATION_ALIASES = {
-    "ביחידה": "מיקום 1",
+    "׳‘׳™׳—׳™׳“׳”": "׳׳™׳§׳•׳ 1",
 }
-VALID_DAILY_STATUS = {"תקין", "לא תקין", "לא הוזן"}
-VALID_SELF_DAILY_STATUS = {"תקין", "לא תקין"}
-DEFAULT_LOCATION = "בבית"
-DEFAULT_DAILY_STATUS = "לא הוזן"
-DEFAULT_LOCATION_OPTIONS = ["בבית", "מיקום 1", "מיקום 2", "מיקום 3", "מיקום 4", "מיקום 5"]
+VALID_DAILY_STATUS = {"׳×׳§׳™׳", "׳׳ ׳×׳§׳™׳", "׳׳ ׳”׳•׳–׳"}
+VALID_SELF_DAILY_STATUS = {"׳×׳§׳™׳", "׳׳ ׳×׳§׳™׳"}
+DEFAULT_LOCATION = "׳‘׳‘׳™׳×"
+DEFAULT_DAILY_STATUS = "\u05dc\u05d0 \u05d4\u05d5\u05d6\u05df"
+MAX_LOCATION_LENGTH = 80
+DEFAULT_LOCATION_OPTIONS = ["׳‘׳‘׳™׳×", "׳׳™׳§׳•׳ 1", "׳׳™׳§׳•׳ 2", "׳׳™׳§׳•׳ 3", "׳׳™׳§׳•׳ 4", "׳׳™׳§׳•׳ 5"]
 
 
 @dataclass(frozen=True)
@@ -371,6 +372,10 @@ class SnapshotService:
             location_value = self._normalize_location_option(self_location)
             if not location_value:
                 raise ValidationError("self_location cannot be empty")
+            if len(location_value) > MAX_LOCATION_LENGTH:
+                raise ValidationError(
+                    f"self_location must be at most {MAX_LOCATION_LENGTH} characters"
+                )
 
             status_value = self._normalize_required_daily_status(self_daily_status)
             snapshot_df.at[row_index, "self_location"] = location_value
@@ -715,7 +720,7 @@ class SnapshotService:
 
         normalized = normalized[SNAPSHOT_COLUMNS].copy()
         normalized["person_id"] = self._normalize_person_ids(normalized["person_id"].tolist())
-        normalized["full_name"] = normalized["full_name"].astype(str).map(lambda x: x.strip() or "ללא שם")
+        normalized["full_name"] = normalized["full_name"].astype(str).map(lambda x: x.strip() or "׳׳׳ ׳©׳")
         normalized["location"] = normalized["location"].map(self._normalize_location)
         normalized["daily_status"] = normalized["daily_status"].map(self._normalize_daily_status)
         normalized["self_location"] = normalized["self_location"].map(self._normalize_self_location)
@@ -850,7 +855,7 @@ class SnapshotService:
         """Strictly validate required status value for self-report flows."""
         cleaned = str(value).strip() if value is not None else ""
         if cleaned not in VALID_SELF_DAILY_STATUS:
-            raise ValidationError("daily_status must be either 'תקין' or 'לא תקין'")
+            raise ValidationError("daily_status must be either '׳×׳§׳™׳' or '׳׳ ׳×׳§׳™׳'")
         return cleaned
 
     def _normalize_notes(self, value: object) -> str:
@@ -912,3 +917,4 @@ class SnapshotService:
         """Convert empty strings to None for cleaner API responses."""
         cleaned = value.strip()
         return cleaned if cleaned else None
+

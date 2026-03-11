@@ -9,9 +9,11 @@ from app.config import Settings
 from app.services.snapshot_service import (
     DEFAULT_DAILY_STATUS,
     DEFAULT_LOCATION,
+    MAX_LOCATION_LENGTH,
     SnapshotService,
 )
 from app.storage.providers import LocalStorageProvider
+from app.exceptions import ValidationError
 
 
 def _build_settings(
@@ -165,3 +167,19 @@ def test_load_snapshot_create_if_missing_builds_missing_past_date(tmp_path: Path
     assert set(past_df["full_name"].tolist()) == {"Alice", "Bob"}
     assert set(past_df["location"].tolist()) == {DEFAULT_LOCATION}
     assert set(past_df["daily_status"].tolist()) == {DEFAULT_DAILY_STATUS}
+
+
+def test_update_self_report_rejects_too_long_location(tmp_path: Path) -> None:
+    """Self-report location should be validated to avoid oversized user input."""
+    service = _build_service(tmp_path=tmp_path, seed_names=["Alice"])
+    long_location = "L" * (MAX_LOCATION_LENGTH + 1)
+
+    try:
+        service.update_self_report_today(
+            person_lookup="Alice",
+            self_location=long_location,
+            self_daily_status="\u05ea\u05e7\u05d9\u05df",
+        )
+        assert False, "Expected ValidationError for overly long self_location"
+    except ValidationError as exc:
+        assert "self_location" in str(exc)

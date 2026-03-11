@@ -2,72 +2,24 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
-from datetime import date
-from functools import lru_cache
-from io import BytesIO
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse
 
-from app.config import Settings
+from app.api.dependencies import get_settings, get_snapshot_service
+from app.api.routers.export import router as export_router
+from app.api.routers.locations import router as locations_router
+from app.api.routers.people import router as people_router
+from app.api.routers.snapshot import router as snapshot_router
 from app.exceptions import AppError, NotFoundError, StorageError, ValidationError
-from app.models import (
-    AvailableDatesResponse,
-    InitialPeopleListCreate,
-    InitialPeopleListResponse,
-    LocationCreate,
-    LocationListResponse,
-    PersonCreate,
-    PersonRecord,
-    PersonUpdate,
-    SelfReportUpdate,
-    SnapshotResponse,
-    SystemStatusResponse,
-)
-from app.services.snapshot_service import SnapshotService
+from app.models import SystemStatusResponse
 from app.services.telegram_bot_service import TelegramBotService
-from app.storage.providers import build_storage
 
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-EXCEL_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 telegram_bot_service: TelegramBotService | None = None
-
-
-@lru_cache
-def get_settings() -> Settings:
-    """Load and cache YAML settings once per process."""
-    return Settings.from_yaml()
-
-
-@lru_cache
-def get_snapshot_service() -> SnapshotService:
-    """Build and cache business service with selected storage backend."""
-    settings = get_settings()
-    storage = build_storage(settings)
-    return SnapshotService(settings=settings, storage=storage)
-
-
-def parse_date(value: str) -> date:
-    """Parse YYYY-MM-DD date from path parameter."""
-    try:
-        return date.fromisoformat(value)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail="Date must be in YYYY-MM-DD format") from exc
-
-
-def service_dep() -> SnapshotService:
-    """FastAPI dependency provider for snapshot service."""
-    return get_snapshot_service()
-
-
-def build_download_response(content: bytes, filename: str, media_type: str) -> StreamingResponse:
-    """Build HTTP attachment response for file downloads."""
-    response = StreamingResponse(BytesIO(content), media_type=media_type)
-    response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
-    return response
 
 
 def get_system_status() -> dict:
@@ -142,13 +94,31 @@ async def validation_error_handler(_: object, exc: ValidationError):
 @app.exception_handler(StorageError)
 async def storage_error_handler(_: object, exc: StorageError):
     """Return unified 500 response for storage backend errors."""
-    return JSONResponse(status_code=500, content={"detail": str(exc)})
+    logger.error("Storage error: %s", exc)
+    return JSONResponse(status_code=500, content={"detail": "Storage operation failed"})
 
 
 @app.exception_handler(AppError)
 async def app_error_handler(_: object, exc: AppError):
     """Return unified fallback response for known application errors."""
     return JSONResponse(status_code=400, content={"detail": str(exc)})
+
+
+@app.exception_handler(Exception)
+async def unhandled_error_handler(_: object, exc: Exception):
+    """
+    Catch unexpected server errors and return a safe response.
+
+    This prevents leaking internal details and keeps request failures controlled.
+    """
+    logger.exception("Unhandled server error: %s", exc)
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+
+
+app.include_router(snapshot_router)
+app.include_router(export_router)
+app.include_router(locations_router)
+app.include_router(people_router)
 
 
 @app.get("/api/health")
@@ -161,147 +131,3 @@ def health() -> dict:
 def system_status() -> SystemStatusResponse:
     """Return current runtime status for optional integrations."""
     return SystemStatusResponse(**get_system_status())
-
-
-@app.get("/api/snapshot/today", response_model=SnapshotResponse)
-def get_today_snapshot(service: SnapshotService = Depends(service_dep)) -> SnapshotResponse:
-    """Return today's snapshot (auto-creates if missing)."""
-    return SnapshotResponse(**service.get_today_snapshot())
-
-
-@app.get("/api/snapshot/{snapshot_date}", response_model=SnapshotResponse)
-def get_snapshot(
-    snapshot_date: str,
-    create_if_missing: bool = True,
-    service: SnapshotService = Depends(service_dep),
-) -> SnapshotResponse:
-    """
-    Return snapshot for a specific date.
-
-    By default missing dates are auto-created from master people list so
-    operators can work on any selected day without a manual bootstrap step.
-    """
-    parsed_date = parse_date(snapshot_date)
-    return SnapshotResponse(
-        **service.get_snapshot_for_date(parsed_date, create_if_missing=create_if_missing)
-    )
-
-
-@app.get("/api/export/day/{snapshot_date}")
-def export_snapshot_day(snapshot_date: str, service: SnapshotService = Depends(service_dep)) -> StreamingResponse:
-    """Download one day snapshot file in xlsx format."""
-    parsed_date = parse_date(snapshot_date)
-    filename, content = service.get_snapshot_excel_bytes(
-        parsed_date,
-        create_if_missing=(parsed_date == date.today()),
-    )
-    return build_download_response(content, filename, EXCEL_MEDIA_TYPE)
-
-
-@app.get("/api/export/range")
-def export_snapshot_range(
-    date_from: str,
-    date_to: str,
-    service: SnapshotService = Depends(service_dep),
-) -> StreamingResponse:
-    """Download zip of all daily snapshot xlsx files in selected date range."""
-    parsed_from = parse_date(date_from)
-    parsed_to = parse_date(date_to)
-    filename, content = service.get_snapshots_zip_bytes(parsed_from, parsed_to)
-    return build_download_response(content, filename, "application/zip")
-
-
-@app.get("/api/history/dates", response_model=AvailableDatesResponse)
-def get_available_dates(service: SnapshotService = Depends(service_dep)) -> AvailableDatesResponse:
-    """Return all snapshot dates currently available in storage."""
-    return AvailableDatesResponse(dates=service.list_available_dates())
-
-
-@app.get("/api/locations", response_model=LocationListResponse)
-def get_locations(service: SnapshotService = Depends(service_dep)) -> LocationListResponse:
-    """Return all available location options."""
-    return LocationListResponse(locations=service.get_locations())
-
-
-@app.post("/api/locations", response_model=LocationListResponse)
-def create_location(
-    payload: LocationCreate,
-    service: SnapshotService = Depends(service_dep),
-) -> LocationListResponse:
-    """Create location option and return updated location list."""
-    return LocationListResponse(locations=service.add_location(payload.location))
-
-
-@app.delete("/api/locations/{location_name}", response_model=LocationListResponse)
-def remove_location(
-    location_name: str,
-    service: SnapshotService = Depends(service_dep),
-) -> LocationListResponse:
-    """Delete one location option and return updated location list."""
-    return LocationListResponse(locations=service.delete_location(location_name))
-
-
-@app.post("/api/people", response_model=PersonRecord)
-def create_person(payload: PersonCreate, service: SnapshotService = Depends(service_dep)) -> PersonRecord:
-    """Create a person in master list and insert into today's snapshot."""
-    return PersonRecord(**service.add_person_today(payload))
-
-
-@app.post("/api/people/initialize-list", response_model=InitialPeopleListResponse)
-def create_initial_people_list(
-    payload: InitialPeopleListCreate,
-    service: SnapshotService = Depends(service_dep),
-) -> InitialPeopleListResponse:
-    """Bulk-create initial names in master list and today's snapshot."""
-    return InitialPeopleListResponse(**service.add_initial_people_today(payload.names))
-
-
-@app.patch("/api/people/{person_id}", response_model=PersonRecord)
-def quick_update_person(
-    person_id: str,
-    payload: PersonUpdate,
-    service: SnapshotService = Depends(service_dep),
-) -> PersonRecord:
-    """Apply partial update to today's row."""
-    return PersonRecord(**service.update_person_today(person_id, payload))
-
-
-@app.post("/api/self-report", response_model=PersonRecord)
-def create_self_report(
-    payload: SelfReportUpdate,
-    service: SnapshotService = Depends(service_dep),
-) -> PersonRecord:
-    """Update today's self-reported location and status."""
-    return PersonRecord(
-        **service.update_self_report_today(
-            person_lookup=payload.person_lookup,
-            self_location=payload.self_location,
-            self_daily_status=payload.self_daily_status,
-        )
-    )
-
-
-@app.put("/api/people/{person_id}", response_model=PersonRecord)
-def replace_person(
-    person_id: str,
-    payload: PersonCreate,
-    service: SnapshotService = Depends(service_dep),
-) -> PersonRecord:
-    """Replace editable fields for a person in today's snapshot."""
-    return PersonRecord(**service.replace_person_today(person_id, payload))
-
-
-@app.delete("/api/people/{person_id}", response_model=PersonRecord)
-def delete_person(
-    person_id: str,
-    service: SnapshotService = Depends(service_dep),
-) -> PersonRecord:
-    """Delete a person from today's snapshot and master list."""
-    return PersonRecord(**service.delete_person_today(person_id))
-
-
-@app.post("/api/history/{snapshot_date}/restore-to-today", response_model=SnapshotResponse)
-def restore_history_to_today(snapshot_date: str, service: SnapshotService = Depends(service_dep)) -> SnapshotResponse:
-    """Restore one historical date into today's snapshot."""
-    parsed_date = parse_date(snapshot_date)
-    return SnapshotResponse(**service.restore_snapshot_to_today(parsed_date))
