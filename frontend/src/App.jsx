@@ -518,6 +518,15 @@ function App() {
 
   return (
     <div className="app-shell" dir="rtl">
+      <button
+        className="btn btn-primary floating-save-btn"
+        onClick={handleDownloadDayFile}
+        disabled={loading || actionLoading || !selectedDate}
+        title="שמור קובץ Excel של התאריך הנבחר"
+      >
+        שמור
+      </button>
+
       <header className="header-card">
         <div>
           <h1>ניהול סטטוס יומי ומיקום</h1>
@@ -579,7 +588,7 @@ function App() {
       </header>
 
       <section className="toolbar-card">
-        <div className="filter-group">
+        <div className="filter-group compact-filter-group">
           <label>חיפוש לפי שם</label>
           <input
             placeholder="הקלד שם..."
@@ -588,7 +597,7 @@ function App() {
           />
         </div>
 
-        <div className="filter-group">
+        <div className="filter-group compact-filter-group">
           <label>פילטר מיקום</label>
           <select
             value={locationFilter}
@@ -603,7 +612,7 @@ function App() {
           </select>
         </div>
 
-        <div className="filter-group">
+        <div className="filter-group compact-filter-group">
           <label>פילטר סטטוס</label>
           <select
             value={statusFilter}
@@ -780,4 +789,3 @@ function App() {
 }
 
 export default App;
-

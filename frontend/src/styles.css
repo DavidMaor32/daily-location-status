@@ -53,6 +53,14 @@ body {
   gap: 16px;
 }
 
+.floating-save-btn {
+  position: fixed;
+  top: 14px;
+  left: 14px;
+  z-index: 40;
+  box-shadow: 0 6px 14px rgba(15, 70, 108, 0.2);
+}
+
 .header-card,
 .toolbar-card,
 .dates-card,
@@ -104,6 +112,11 @@ body {
   display: grid;
   gap: 6px;
   min-width: 170px;
+}
+
+.compact-filter-group {
+  min-width: 150px;
+  width: 180px;
 }
 
 .toolbar-card {
@@ -420,6 +433,11 @@ textarea {
     font-size: 1.3rem;
   }
 
+  .floating-save-btn {
+    top: 10px;
+    left: 10px;
+  }
+
   .date-controls {
     width: 100%;
   }
@@ -431,5 +449,9 @@ textarea {
 
   .filter-group {
     min-width: 100%;
+  }
+
+  .compact-filter-group {
+    width: 100%;
   }
 }
