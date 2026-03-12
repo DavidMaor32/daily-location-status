@@ -51,4 +51,3 @@ export function uniqueLocations(locations) {
 export function getLocationChipClass(location) {
   return LOCATION_CLASS_BY_VALUE[location] || "chip-custom-location";
 }
-

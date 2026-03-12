@@ -252,7 +252,7 @@ class Settings:
             ),
             seed_people_file=_resolve_path(
                 _parse_optional_string(_yaml_get(config_data, "storage.seed_people_file")),
-                BASE_DIR / "backend" / "data" / "sample_people.csv",
+                BASE_DIR / "backend" / "data" / "sample_people.xlsx",
             ),
             cors_origins=cors_origins,
             write_api_key=_parse_optional_string(os.getenv("WRITE_API_KEY"))

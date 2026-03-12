@@ -33,6 +33,12 @@ class _InMemoryProvider:
             raise StorageError("Simulated write failure")
         self._objects[key] = content
 
+    def delete(self, key: str) -> bool:
+        if key not in self._objects:
+            return False
+        del self._objects[key]
+        return True
+
     def list_keys(self, prefix: str) -> list[str]:
         return [key for key in self._objects if key.startswith(prefix)]
 
@@ -58,7 +64,7 @@ def _build_settings(tmp_path: Path, *, telegram_enabled: bool = True) -> Setting
         s3_locations_key="master/locations.xlsx",
         snapshot_restore_policy="exact_snapshot",
         local_storage_dir=tmp_path / "storage",
-        seed_people_file=tmp_path / "seed.csv",
+        seed_people_file=tmp_path / "seed.xlsx",
         cors_origins=["http://localhost:5173"],
         write_api_key=None,
         telegram_bot_enabled=telegram_enabled,

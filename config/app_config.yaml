@@ -22,7 +22,7 @@ storage:
 
   local_storage_dir: "./local_storage" # Local Excel storage root path | Example: "./local_storage"
 
-  seed_people_file: "./backend/data/sample_people.csv" # Initial people CSV (used only when master file does not exist) | Example: "./backend/data/sample_people.csv"
+  seed_people_file: "./backend/data/sample_people.xlsx" # Initial people Excel file (used only when master file does not exist) | Example: "./backend/data/sample_people.xlsx"
   snapshot_restore_policy: "exact_snapshot" # Restore policy: exact_snapshot / master_only
   s3:
     snapshots_prefix: "snapshots" # S3 logical folder for daily snapshots | Example: "snapshots"

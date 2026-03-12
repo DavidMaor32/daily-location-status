@@ -1,5 +1,7 @@
 """Pydantic models for request/response payloads."""
 
+from __future__ import annotations
+
 from datetime import date
 from typing import Literal, Optional
 
@@ -8,6 +10,8 @@ from pydantic import BaseModel, Field, field_validator
 
 DailyStatusType = Literal["תקין", "לא תקין", "לא הוזן"]
 SelfReportStatusType = Literal["תקין", "לא תקין"]
+LocationEventType = Literal["move", "correction", "undo"]
+LocationEventVoidReasonType = Literal["correction", "undo"]
 LOCATION_MAX_LENGTH = 80
 
 
@@ -112,6 +116,86 @@ class PersonRecord(BaseModel):
     notes: str
     last_updated: str
     date: date
+
+
+class LocationEventCreate(BaseModel):
+    """Payload for creating one location tracking event for a person."""
+
+    location: str = Field(..., min_length=1, max_length=LOCATION_MAX_LENGTH)
+    daily_status: Optional[DailyStatusType] = None
+    occurred_at: Optional[str] = None
+
+    @field_validator("location")
+    @classmethod
+    def normalize_location(cls, value: str) -> str:
+        """Trim and validate non-empty location text."""
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("location cannot be empty")
+        return cleaned
+
+    @field_validator("occurred_at")
+    @classmethod
+    def normalize_occurred_at(cls, value: Optional[str]) -> Optional[str]:
+        """Trim optional occurred_at timestamp."""
+        if value is None:
+            return value
+        cleaned = value.strip()
+        return cleaned or None
+
+
+class LocationEventRecord(BaseModel):
+    """Single location tracking event row."""
+
+    event_id: str
+    person_id: str
+    event_type: LocationEventType
+    location: str
+    daily_status: DailyStatusType
+    target_event_id: Optional[str] = None
+    is_voided: bool
+    voided_at: Optional[str] = None
+    voided_by_event_id: Optional[str] = None
+    occurred_at: str
+    created_at: str
+    source: str
+    date: date
+
+
+class PersonLocationEventsResponse(BaseModel):
+    """Response payload for one person's location tracking timeline on a date."""
+
+    date: date
+    person_id: str
+    events: list[LocationEventRecord]
+    last_action_event_id: Optional[str] = None
+    last_action_type: Optional[LocationEventType] = None
+    latest_transition_warning: Optional[str] = None
+
+
+class PersonTransitionRecord(BaseModel):
+    """Single transition between two locations in one day timeline."""
+
+    transition_id: str
+    person_id: str
+    full_name: str
+    from_location: str
+    to_location: str
+    moved_at: str
+    from_occurred_at: str
+    to_occurred_at: str
+    dwell_minutes: int
+    from_event_id: str
+    to_event_id: str
+    date: date
+
+
+class PersonTransitionsResponse(BaseModel):
+    """Response payload for one person's location transitions on a date."""
+
+    date: date
+    person_id: str
+    transitions: list[PersonTransitionRecord]
 
 
 class SelfReportUpdate(BaseModel):
@@ -219,4 +303,3 @@ class InitialPeopleListResponse(BaseModel):
     skipped_count: int
     created_names: list[str]
     skipped_names: list[str]
-

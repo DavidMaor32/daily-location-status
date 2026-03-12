@@ -1,7 +1,9 @@
 ﻿from __future__ import annotations
 
 from datetime import date, timedelta
+from io import BytesIO
 from pathlib import Path
+from zipfile import ZipFile
 
 import pandas as pd
 
@@ -13,7 +15,7 @@ from app.services.snapshot_service import (
     SnapshotService,
 )
 from app.storage.providers import LocalStorageProvider
-from app.exceptions import ValidationError
+from app.exceptions import NotFoundError, ValidationError
 
 
 def _build_settings(
@@ -55,8 +57,8 @@ def _build_service(
     restore_policy: str = "exact_snapshot",
 ) -> SnapshotService:
     """Create ready-to-use snapshot service with seed master people."""
-    seed_file = tmp_path / "seed_people.csv"
-    pd.DataFrame([{"full_name": name} for name in seed_names]).to_csv(seed_file, index=False)
+    seed_file = tmp_path / "seed_people.xlsx"
+    pd.DataFrame([{"full_name": name} for name in seed_names]).to_excel(seed_file, index=False)
     settings = _build_settings(tmp_path=tmp_path, seed_file=seed_file, restore_policy=restore_policy)
     storage = LocalStorageProvider(settings.local_storage_dir)
     service = SnapshotService(settings=settings, storage=storage)
@@ -170,6 +172,35 @@ def test_load_snapshot_create_if_missing_builds_missing_past_date(tmp_path: Path
     assert set(past_df["daily_status"].tolist()) == {DEFAULT_DAILY_STATUS}
 
 
+def test_delete_snapshot_for_date_removes_snapshot_and_events_files(tmp_path: Path) -> None:
+    """Deleting one date should remove snapshot and location-events files for that date."""
+    service = _build_service(tmp_path=tmp_path, seed_names=["Alice"])
+    target_date = date.today() - timedelta(days=3)
+    service.ensure_snapshot_for_date(target_date)
+    service.save_location_events(target_date, pd.DataFrame())
+
+    snapshot_key = f"{service.settings.s3_snapshots_prefix}/{target_date.isoformat()}.xlsx"
+    events_key = f"{service.settings.s3_snapshots_prefix}_events/{target_date.isoformat()}.xlsx"
+    assert service.storage.exists(snapshot_key)
+    assert service.storage.exists(events_key)
+
+    payload = service.delete_snapshot_for_date(target_date)
+    assert payload["date"] == target_date.isoformat()
+    assert payload["snapshot_deleted"] is True
+    assert payload["events_deleted"] is True
+    assert payload["snapshot_key"] == snapshot_key
+    assert payload["events_key"] == events_key
+    assert not service.storage.exists(snapshot_key)
+    assert not service.storage.exists(events_key)
+    assert target_date not in service.list_available_dates()
+
+    try:
+        service.delete_snapshot_for_date(target_date)
+        assert False, "Expected NotFoundError for already deleted snapshot date"
+    except NotFoundError:
+        pass
+
+
 def test_update_self_report_rejects_too_long_location(tmp_path: Path) -> None:
     """Self-report location should be validated to avoid oversized user input."""
     service = _build_service(tmp_path=tmp_path, seed_names=["Alice"])
@@ -184,4 +215,139 @@ def test_update_self_report_rejects_too_long_location(tmp_path: Path) -> None:
         assert False, "Expected ValidationError for overly long self_location"
     except ValidationError as exc:
         assert "self_location" in str(exc)
+
+
+def test_location_events_add_delete_recalculates_current_snapshot_state(tmp_path: Path) -> None:
+    """Hard-deleting tracking events should roll person state back with no deletion trace."""
+    service = _build_service(tmp_path=tmp_path, seed_names=["Alice"])
+    today = date.today()
+    person = service.get_today_snapshot()["people"][0]
+    person_id = str(person["person_id"])
+
+    add_first = service.add_location_event_today(
+        person_id=person_id,
+        location="מיקום 1",
+        daily_status="תקין",
+    )
+    first_event_id = add_first["events"][0]["event_id"]
+
+    add_second = service.add_location_event_today(
+        person_id=person_id,
+        location="מיקום 3",
+        daily_status="לא תקין",
+    )
+    second_event_id = next(
+        item["event_id"] for item in add_second["events"] if item["location"] == "מיקום 3"
+    )
+
+    snapshot_after_second = service.get_today_snapshot()
+    person_after_second = next(item for item in snapshot_after_second["people"] if item["person_id"] == person_id)
+    assert person_after_second["location"] == "מיקום 3"
+    assert person_after_second["daily_status"] == "לא תקין"
+
+    service.delete_location_event_today(person_id=person_id, event_id=second_event_id)
+    snapshot_after_delete_latest = service.get_today_snapshot()
+    person_after_delete_latest = next(
+        item for item in snapshot_after_delete_latest["people"] if item["person_id"] == person_id
+    )
+    assert person_after_delete_latest["location"] == "מיקום 1"
+    assert person_after_delete_latest["daily_status"] == "תקין"
+
+    service.delete_location_event_today(person_id=person_id, event_id=first_event_id)
+    snapshot_after_delete_all = service.get_today_snapshot()
+    person_after_delete_all = next(
+        item for item in snapshot_after_delete_all["people"] if item["person_id"] == person_id
+    )
+    assert person_after_delete_all["location"] == DEFAULT_LOCATION
+    assert person_after_delete_all["daily_status"] == DEFAULT_DAILY_STATUS
+
+    events_payload = service.get_person_location_events(person_id, today)
+    assert events_payload["events"] == []
+
+    active_only_payload = service.get_person_location_events(person_id, today, include_voided=False)
+    assert active_only_payload["events"] == []
+
+    transitions_payload = service.get_person_location_transitions(person_id, today)
+    assert transitions_payload["transitions"] == []
+
+
+
+def test_export_day_excel_contains_location_tracking_history(tmp_path: Path) -> None:
+    """Day export workbook should include snapshot, events, and transitions sheets."""
+    service = _build_service(tmp_path=tmp_path, seed_names=["Alice"])
+    today = date.today()
+    person_id = str(service.get_today_snapshot()["people"][0]["person_id"])
+
+    service.add_location_event_today(
+        person_id=person_id,
+        location="מיקום 1",
+        daily_status="תקין",
+    )
+    service.add_location_event_today(
+        person_id=person_id,
+        location="מיקום 2",
+        daily_status="לא תקין",
+    )
+
+    filename, content = service.get_snapshot_excel_bytes(today, create_if_missing=False)
+    assert filename == f"{today.isoformat()}.xlsx"
+
+    workbook = pd.read_excel(BytesIO(content), sheet_name=None, dtype=str)
+    assert "snapshot" in workbook
+    assert "location_events" in workbook
+    assert "transitions" in workbook
+
+    snapshot_sheet = workbook["snapshot"].fillna("")
+    events_sheet = workbook["location_events"].fillna("")
+    transitions_sheet = workbook["transitions"].fillna("")
+
+    alice_row = snapshot_sheet.loc[snapshot_sheet["full_name"] == "Alice"].iloc[0]
+    assert alice_row["locations_visited"] == "מיקום 1 -> מיקום 2"
+    assert int(alice_row["location_events_count"]) == 2
+    assert "מיקום 1" in alice_row["location_timeline"]
+    assert "מיקום 2" in alice_row["location_timeline"]
+    assert "שעה:" in alice_row["location_timeline"]
+    assert "מיקום:" in alice_row["location_timeline"]
+    assert "סטטוס:" in alice_row["location_timeline"]
+    assert "\n" in alice_row["location_timeline"]
+
+    assert len(events_sheet.index) == 2
+    assert set(events_sheet["full_name"].tolist()) == {"Alice"}
+    assert set(events_sheet["location"].tolist()) == {"מיקום 1", "מיקום 2"}
+    assert set(events_sheet["event_type"].tolist()) == {"move"}
+
+    assert len(transitions_sheet.index) == 1
+    transition_row = transitions_sheet.iloc[0]
+    assert transition_row["full_name"] == "Alice"
+    assert transition_row["from_location"] == "מיקום 1"
+    assert transition_row["to_location"] == "מיקום 2"
+
+
+def test_export_range_zip_contains_workbooks_with_tracking_sheet(tmp_path: Path) -> None:
+    """Range zip export should contain daily workbooks with events and transitions sheets."""
+    service = _build_service(tmp_path=tmp_path, seed_names=["Alice"])
+    today = date.today()
+    yesterday = today - timedelta(days=1)
+    service.ensure_snapshot_for_date(yesterday)
+
+    person_id = str(service.get_today_snapshot()["people"][0]["person_id"])
+    service.add_location_event_today(
+        person_id=person_id,
+        location="מיקום 3",
+        daily_status="תקין",
+    )
+
+    filename, content = service.get_snapshots_zip_bytes(yesterday, today)
+    assert filename == f"snapshots_{yesterday.isoformat()}_to_{today.isoformat()}.zip"
+
+    with ZipFile(BytesIO(content), mode="r") as archive:
+        names = set(archive.namelist())
+        assert f"{yesterday.isoformat()}.xlsx" in names
+        assert f"{today.isoformat()}.xlsx" in names
+
+        today_content = archive.read(f"{today.isoformat()}.xlsx")
+        today_workbook = pd.read_excel(BytesIO(today_content), sheet_name=None, dtype=str)
+        assert "snapshot" in today_workbook
+        assert "location_events" in today_workbook
+        assert "transitions" in today_workbook
 

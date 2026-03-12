@@ -34,6 +34,21 @@ SNAPSHOT_COLUMNS = [
 ]
 MASTER_COLUMNS = ["person_id", "full_name"]
 LOCATION_COLUMNS = ["location", "created_at"]
+LOCATION_EVENT_COLUMNS = [
+    "event_id",
+    "person_id",
+    "event_type",
+    "target_event_id",
+    "is_voided",
+    "voided_at",
+    "voided_by_event_id",
+    "location",
+    "daily_status",
+    "occurred_at",
+    "created_at",
+    "source",
+    "date",
+]
 # Backward compatibility for legacy values from old files.
 LOCATION_ALIASES = {
     "יחידה": "מיקום 1",
@@ -45,6 +60,24 @@ DEFAULT_LOCATION = "בבית"
 DEFAULT_DAILY_STATUS = "לא הוזן"
 MAX_LOCATION_LENGTH = 80
 DEFAULT_LOCATION_OPTIONS = ["בבית", "מיקום 1", "מיקום 2", "מיקום 3", "מיקום 4", "מיקום 5"]
+DEFAULT_EVENT_SOURCE = "manual"
+VALID_EVENT_TYPES = {"move", "correction", "undo"}
+VALID_VOID_REASONS = {"correction", "undo"}
+SUSPICIOUS_TRANSITION_SECONDS = 120
+TRANSITION_COLUMNS = [
+    "transition_id",
+    "person_id",
+    "full_name",
+    "from_location",
+    "to_location",
+    "moved_at",
+    "from_occurred_at",
+    "to_occurred_at",
+    "dwell_minutes",
+    "from_event_id",
+    "to_event_id",
+    "date",
+]
 
 
 @dataclass(frozen=True)
@@ -127,10 +160,194 @@ class SnapshotService:
                 "snapshot_key": self._snapshot_key(snapshot_date),
             }
 
+    def delete_snapshot_for_date(self, snapshot_date: date) -> dict:
+        """Delete snapshot and tracking-event files for one date."""
+        with self._write_guard():
+            snapshot_key = self._snapshot_key(snapshot_date)
+            events_key = self._location_events_key(snapshot_date)
+
+            snapshot_exists = self.storage.exists(snapshot_key)
+            events_exists = self.storage.exists(events_key)
+            if not snapshot_exists and not events_exists:
+                raise NotFoundError(f"Snapshot does not exist for date {snapshot_date.isoformat()}")
+
+            snapshot_deleted = self.storage.delete(snapshot_key) if snapshot_exists else False
+            events_deleted = self.storage.delete(events_key) if events_exists else False
+
+            return {
+                "date": snapshot_date.isoformat(),
+                "snapshot_deleted": bool(snapshot_deleted),
+                "events_deleted": bool(events_deleted),
+                "snapshot_key": snapshot_key,
+                "events_key": events_key,
+            }
+
+    def get_person_location_events(
+        self,
+        person_id: str,
+        snapshot_date: date,
+        *,
+        create_if_missing: bool = True,
+        include_voided: bool = True,
+    ) -> dict:
+        """Return one person's location tracking events for a specific date."""
+        snapshot_df = self.load_snapshot(snapshot_date, create_if_missing=create_if_missing)
+        self._validate_person_exists(snapshot_df, person_id)
+        return self._build_person_location_events_payload(
+            person_id,
+            snapshot_date,
+            include_voided=include_voided,
+        )
+
+    def get_person_location_transitions(
+        self,
+        person_id: str,
+        snapshot_date: date,
+        *,
+        create_if_missing: bool = True,
+    ) -> dict:
+        """Return one person's computed location transitions for a specific date."""
+        snapshot_df = self.load_snapshot(snapshot_date, create_if_missing=create_if_missing)
+        self._validate_person_exists(snapshot_df, person_id)
+        transitions_df = self._build_transitions_df(snapshot_df, self.load_location_events(snapshot_date), snapshot_date)
+        person_transitions = transitions_df[transitions_df["person_id"] == person_id].copy()
+        transition_records = [
+            self._transition_row_to_record(row)
+            for _, row in self._sort_transitions_df(person_transitions, descending=True).iterrows()
+        ]
+        return {
+            "date": snapshot_date,
+            "person_id": person_id,
+            "transitions": transition_records,
+        }
+
+    def add_location_event_today(
+        self,
+        person_id: str,
+        *,
+        location: str,
+        daily_status: str | None = None,
+        occurred_at: str | None = None,
+        source: str = DEFAULT_EVENT_SOURCE,
+    ) -> dict:
+        """Append one location event for today and sync today's snapshot current state."""
+        with self._write_guard():
+            today = date.today()
+            snapshot_df = self.load_snapshot(today, create_if_missing=True)
+            row_index = self._find_person_row_index(snapshot_df, person_id)
+            events_df = self.load_location_events(today)
+
+            normalized_location = self._normalize_location_option(location)
+            if not normalized_location:
+                raise ValidationError("location cannot be empty")
+            if len(normalized_location) > MAX_LOCATION_LENGTH:
+                raise ValidationError(f"location must be at most {MAX_LOCATION_LENGTH} characters")
+            self._validate_location_allowed(normalized_location, field_name="location")
+
+            status_value = self._normalize_daily_status(
+                daily_status if daily_status is not None else snapshot_df.at[row_index, "daily_status"]
+            )
+            occurred_at_value = self._normalize_optional_event_timestamp(
+                occurred_at,
+                field_name="occurred_at",
+            )
+
+            previous_move_event = self._get_latest_active_move_event_for_person(events_df, person_id)
+
+            created_event, events_df = self._append_location_event(
+                events_df=events_df,
+                snapshot_date=today,
+                person_id=person_id,
+                event_type="move",
+                location=normalized_location,
+                daily_status=status_value,
+                occurred_at=occurred_at_value,
+                source=source,
+            )
+
+            self._apply_current_state_from_events(snapshot_df, row_index, person_id, events_df)
+            snapshot_df = self._normalize_snapshot_df(snapshot_df, today)
+            self.save_snapshot(today, snapshot_df)
+
+            warning = self._build_transition_warning(previous_move_event, created_event)
+            return self._build_person_location_events_payload(
+                person_id,
+                today,
+                events_df=events_df,
+                include_voided=True,
+                last_action_event_id=str(created_event["event_id"]),
+                last_action_type="move",
+                latest_transition_warning=warning,
+            )
+
+    def delete_location_event_today(
+        self,
+        person_id: str,
+        event_id: str,
+        *,
+        reason: str = "correction",
+    ) -> dict:
+        """Hard-delete one location event for today and recalculate current snapshot state."""
+        with self._write_guard():
+            normalized_event_id = str(event_id).strip()
+            if not normalized_event_id:
+                raise ValidationError("event_id cannot be empty")
+            # Backward compatibility: API still accepts `reason`, but deletion is physical.
+            _ = reason
+
+            today = date.today()
+            snapshot_df = self.load_snapshot(today, create_if_missing=True)
+            row_index = self._find_person_row_index(snapshot_df, person_id)
+
+            events_df = self.load_location_events(today)
+            events_df = self._normalize_location_events_df(events_df, today)
+            target_matches = events_df.index[
+                (events_df["person_id"] == person_id)
+                & (events_df["event_id"] == normalized_event_id)
+            ].tolist()
+            if not target_matches:
+                raise NotFoundError(
+                    f"Location event '{normalized_event_id}' was not found for person '{person_id}'"
+                )
+
+            target_index = target_matches[0]
+            target_event = events_df.loc[target_index]
+            target_event_type = self._normalize_event_type(target_event.get("event_type"))
+            if target_event_type != "move":
+                raise ValidationError("Only 'move' events can be deleted")
+
+            # Remove the selected move event completely.
+            removed_ids = {normalized_event_id}
+            # Cleanup legacy append-only metadata rows if they exist.
+            target_voided_by = str(target_event.get("voided_by_event_id") or "").strip()
+            if target_voided_by:
+                removed_ids.add(target_voided_by)
+
+            legacy_targeting_rows = events_df[
+                (events_df["target_event_id"] == normalized_event_id)
+                & (events_df["event_type"].isin(["correction", "undo"]))
+            ]
+            removed_ids.update(legacy_targeting_rows["event_id"].astype(str).tolist())
+
+            events_df = events_df[~events_df["event_id"].isin(removed_ids)].copy()
+            events_df = self._normalize_location_events_df(events_df, today)
+            self.save_location_events(today, events_df)
+
+            self._apply_current_state_from_events(snapshot_df, row_index, person_id, events_df)
+            snapshot_df = self._normalize_snapshot_df(snapshot_df, today)
+            self.save_snapshot(today, snapshot_df)
+
+            return self._build_person_location_events_payload(
+                person_id,
+                today,
+                events_df=events_df,
+                include_voided=True,
+            )
+
     def list_available_dates(self) -> list[date]:
         """List all snapshot dates currently available in storage."""
         prefix = self.settings.s3_snapshots_prefix.strip("/")
-        keys = self.storage.list_keys(prefix)
+        keys = self.storage.list_keys(f"{prefix}/")
 
         dates: set[date] = set()
         for key in keys:
@@ -158,7 +375,9 @@ class SnapshotService:
         if not self.storage.exists(snapshot_key):
             raise NotFoundError(f"Snapshot does not exist for date {snapshot_date.isoformat()}")
 
-        content = self.storage.read_bytes(snapshot_key)
+        snapshot_df = self.load_snapshot(snapshot_date, create_if_missing=False)
+        events_df = self.load_location_events(snapshot_date)
+        content = self._build_export_excel_bytes(snapshot_df, events_df, snapshot_date)
         filename = f"{snapshot_date.isoformat()}.xlsx"
         return filename, content
 
@@ -181,7 +400,13 @@ class SnapshotService:
                 if not self.storage.exists(snapshot_key):
                     continue
 
-                snapshot_content = self.storage.read_bytes(snapshot_key)
+                snapshot_df = self.load_snapshot(snapshot_date, create_if_missing=False)
+                events_df = self.load_location_events(snapshot_date)
+                snapshot_content = self._build_export_excel_bytes(
+                    snapshot_df,
+                    events_df,
+                    snapshot_date,
+                )
                 zip_file.writestr(f"{snapshot_date.isoformat()}.xlsx", snapshot_content)
                 added_files += 1
 
@@ -246,6 +471,26 @@ class SnapshotService:
                 )
                 raise ValidationError(
                     "Cannot delete location that is currently in use. "
+                    f"Example people: {sample_names}"
+                )
+
+            today_events_df = self.load_location_events(date.today())
+            in_use_events = today_events_df[
+                (today_events_df["location"] == normalized_name)
+                & (today_events_df["event_type"] == "move")
+                & (~today_events_df["is_voided"].map(self._parse_bool))
+            ]
+            if not in_use_events.empty:
+                people_by_id = {
+                    str(row["person_id"]): str(row["full_name"])
+                    for _, row in today_df.iterrows()
+                }
+                sample_names = ", ".join(
+                    people_by_id.get(str(item), str(item))
+                    for item in in_use_events["person_id"].astype(str).head(5).tolist()
+                )
+                raise ValidationError(
+                    "Cannot delete location that exists in today's tracking events. "
                     f"Example people: {sample_names}"
                 )
 
@@ -390,6 +635,7 @@ class SnapshotService:
                 raise NotFoundError(f"Person '{person_id}' was not found in today's snapshot")
 
             row_index = matches[0]
+            previous_location = self._normalize_location(snapshot_df.at[row_index, "location"])
             for field_name, field_value in patch.items():
                 if field_value is not None:
                     if field_name == "location":
@@ -415,6 +661,21 @@ class SnapshotService:
                         continue
 
                     snapshot_df.at[row_index, field_name] = field_value
+
+            next_location = self._normalize_location(snapshot_df.at[row_index, "location"])
+            next_daily_status = self._normalize_daily_status(snapshot_df.at[row_index, "daily_status"])
+            if next_location != previous_location:
+                events_df = self.load_location_events(today)
+                _, events_df = self._append_location_event(
+                    events_df=events_df,
+                    snapshot_date=today,
+                    person_id=person_id,
+                    event_type="move",
+                    location=next_location,
+                    daily_status=next_daily_status,
+                    occurred_at=self._now_iso_precise(),
+                    source="quick_update",
+                )
 
             snapshot_df.at[row_index, "last_updated"] = self._now_iso()
             snapshot_df = self._normalize_snapshot_df(snapshot_df, today)
@@ -485,6 +746,10 @@ class SnapshotService:
             snapshot_df = self._normalize_snapshot_df(snapshot_df, today)
             self.save_snapshot(today, snapshot_df)
 
+            events_df = self.load_location_events(today)
+            events_df = events_df[events_df["person_id"] != person_id].copy()
+            self.save_location_events(today, events_df)
+
             master_df = self.load_master_people()
             master_df = master_df[master_df["person_id"] != person_id].copy()
             self.save_master_people(master_df)
@@ -519,6 +784,7 @@ class SnapshotService:
                     ),
                 )
             self.save_snapshot(today, restored_df)
+            self.save_location_events(today, pd.DataFrame(columns=LOCATION_EVENT_COLUMNS))
             logger.info(
                 "Restored snapshot from %s into %s (policy=%s)",
                 source_date.isoformat(),
@@ -571,6 +837,22 @@ class SnapshotService:
         with self._write_guard():
             self.storage.write_bytes(self._snapshot_key(snapshot_date), content)
 
+    def load_location_events(self, snapshot_date: date) -> pd.DataFrame:
+        """Load and normalize one date location-events file (returns empty when missing)."""
+        events_key = self._location_events_key(snapshot_date)
+        if not self.storage.exists(events_key):
+            return pd.DataFrame(columns=LOCATION_EVENT_COLUMNS)
+
+        df = self._read_excel(events_key)
+        return self._normalize_location_events_df(df, snapshot_date)
+
+    def save_location_events(self, snapshot_date: date, df: pd.DataFrame) -> None:
+        """Normalize and persist one date location-events file."""
+        clean_df = self._normalize_location_events_df(df, snapshot_date)
+        content = self._to_excel_bytes(clean_df)
+        with self._write_guard():
+            self.storage.write_bytes(self._location_events_key(snapshot_date), content)
+
     def ensure_master_people(self) -> pd.DataFrame:
         """Ensure master people file exists; bootstrap from seed if missing."""
         with self._write_guard():
@@ -581,7 +863,7 @@ class SnapshotService:
             if not seed_path.exists():
                 raise ValidationError(f"Seed people file was not found: {seed_path}")
 
-            seed_df = pd.read_csv(seed_path, dtype=str).fillna("")
+            seed_df = self._read_seed_people_file(seed_path)
             master_df = self._normalize_master_df(seed_df)
             self.save_master_people(master_df)
             logger.info("Created master people file from seed data")
@@ -786,6 +1068,42 @@ class SnapshotService:
         normalized = normalized.reset_index(drop=True)
         return normalized
 
+    def _normalize_location_events_df(self, df: pd.DataFrame, snapshot_date: date) -> pd.DataFrame:
+        """Validate and normalize one date location-events dataframe."""
+        normalized = df.copy() if df is not None else pd.DataFrame()
+
+        for column in LOCATION_EVENT_COLUMNS:
+            if column not in normalized.columns:
+                normalized[column] = ""
+
+        normalized = normalized[LOCATION_EVENT_COLUMNS].copy()
+        normalized["person_id"] = normalized["person_id"].astype(str).map(lambda x: x.strip())
+        normalized = normalized[
+            (normalized["person_id"] != "")
+            & (normalized["person_id"].str.lower() != "nan")
+        ].copy()
+
+        normalized["event_type"] = normalized["event_type"].map(self._normalize_event_type)
+        normalized["target_event_id"] = normalized["target_event_id"].astype(str).map(lambda x: x.strip() or "")
+        normalized["is_voided"] = normalized["is_voided"].map(self._parse_bool)
+        normalized["voided_at"] = normalized["voided_at"].map(self._normalize_nullable_event_timestamp)
+        normalized["voided_by_event_id"] = normalized["voided_by_event_id"].astype(str).map(
+            lambda x: x.strip() or ""
+        )
+        normalized["location"] = normalized["location"].map(self._normalize_location)
+        normalized["daily_status"] = normalized["daily_status"].map(self._normalize_daily_status)
+        normalized["occurred_at"] = normalized["occurred_at"].map(self._normalize_event_timestamp)
+        normalized["created_at"] = normalized["created_at"].map(self._normalize_event_timestamp)
+        normalized["source"] = normalized["source"].astype(str).map(
+            lambda item: item.strip() or DEFAULT_EVENT_SOURCE
+        )
+        normalized["date"] = snapshot_date.isoformat()
+
+        normalized["event_id"] = self._normalize_event_ids(normalized["event_id"].tolist())
+        normalized = normalized.drop_duplicates(subset=["event_id"], keep="last")
+        normalized = self._sort_location_events_df(normalized).reset_index(drop=True)
+        return normalized
+
     def _normalize_snapshot_df(self, df: pd.DataFrame, snapshot_date: date) -> pd.DataFrame:
         """Validate and normalize snapshot dataframe structure and values."""
         normalized = df.copy() if df is not None else pd.DataFrame()
@@ -826,6 +1144,23 @@ class SnapshotService:
 
         return normalized_ids
 
+    def _normalize_event_ids(self, values: list[object]) -> list[str]:
+        """Normalize event IDs and generate missing/duplicate IDs."""
+        seen: set[str] = set()
+        normalized_ids: list[str] = []
+
+        for raw in values:
+            candidate = str(raw).strip() if raw is not None else ""
+            if not candidate or candidate.lower() == "nan" or candidate in seen:
+                candidate = self._generate_event_id(seen)
+            while candidate in seen:
+                candidate = self._generate_event_id(seen)
+
+            seen.add(candidate)
+            normalized_ids.append(candidate)
+
+        return normalized_ids
+
     def _normalize_initial_names(self, names: list[str]) -> list[str]:
         """Normalize bulk names list, remove invalid/duplicate values, and preserve order."""
         normalized_names: list[str] = []
@@ -852,10 +1187,22 @@ class SnapshotService:
             if candidate not in used_ids:
                 return candidate
 
+    def _generate_event_id(self, used_ids: set[str]) -> str:
+        """Generate a unique location-event identifier."""
+        while True:
+            candidate = f"E-{uuid4().hex[:10]}"
+            if candidate not in used_ids:
+                return candidate
+
     def _snapshot_key(self, snapshot_date: date) -> str:
         """Build storage key for snapshot file by date."""
         prefix = self.settings.s3_snapshots_prefix.strip("/")
         return f"{prefix}/{snapshot_date.isoformat()}.xlsx"
+
+    def _location_events_key(self, snapshot_date: date) -> str:
+        """Build storage key for one date location-events file."""
+        prefix = self.settings.s3_snapshots_prefix.strip("/")
+        return f"{prefix}_events/{snapshot_date.isoformat()}.xlsx"
 
     def _read_excel(self, key: str) -> pd.DataFrame:
         """Read Excel bytes from storage and convert to dataframe."""
@@ -867,12 +1214,200 @@ class SnapshotService:
         except Exception as exc:  # noqa: BLE001
             raise StorageError(f"Failed to read excel file: {key}") from exc
 
+    def _read_seed_people_file(self, seed_path: Path) -> pd.DataFrame:
+        """Read seed people file from disk (.xlsx/.xls/.xlsm/.csv)."""
+        suffix = seed_path.suffix.strip().lower()
+        try:
+            if suffix in {".xlsx", ".xls", ".xlsm"}:
+                return pd.read_excel(seed_path, dtype=str).fillna("")
+            if suffix == ".csv":
+                return pd.read_csv(seed_path, dtype=str).fillna("")
+        except Exception as exc:  # noqa: BLE001
+            raise ValidationError(f"Failed reading seed people file: {seed_path}") from exc
+
+        raise ValidationError("seed_people_file must be .xlsx, .xls, .xlsm, or .csv")
+
     def _to_excel_bytes(self, df: pd.DataFrame) -> bytes:
         """Serialize dataframe into xlsx bytes."""
         buffer = BytesIO()
         with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
             df.to_excel(writer, index=False)
         return buffer.getvalue()
+
+    def _build_export_excel_bytes(
+        self,
+        snapshot_df: pd.DataFrame,
+        events_df: pd.DataFrame,
+        snapshot_date: date,
+    ) -> bytes:
+        """Build export workbook bytes with snapshot, events, and transitions sheets."""
+        snapshot_export_df = self._build_snapshot_export_df(snapshot_df, events_df, snapshot_date)
+        events_export_df = self._build_location_events_export_df(snapshot_df, events_df, snapshot_date)
+        transitions_export_df = self._build_transitions_export_df(snapshot_df, events_df, snapshot_date)
+
+        buffer = BytesIO()
+        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+            snapshot_export_df.to_excel(writer, index=False, sheet_name="snapshot")
+            events_export_df.to_excel(writer, index=False, sheet_name="location_events")
+            transitions_export_df.to_excel(writer, index=False, sheet_name="transitions")
+        return buffer.getvalue()
+
+    def _build_snapshot_export_df(
+        self,
+        snapshot_df: pd.DataFrame,
+        events_df: pd.DataFrame,
+        snapshot_date: date,
+    ) -> pd.DataFrame:
+        """Build snapshot export dataframe enriched with per-person location history fields."""
+        export_df = self._normalize_snapshot_df(snapshot_df, snapshot_date).copy()
+        events_source = self._normalize_location_events_df(events_df, snapshot_date)
+        active_moves = self._filter_active_move_events(events_source)
+        events_by_person: dict[str, list[dict[str, str]]] = {}
+
+        for _, row in self._sort_location_events_df(active_moves).iterrows():
+            person_key = str(row["person_id"])
+            events_by_person.setdefault(person_key, []).append(
+                {
+                    "occurred_at": self._normalize_event_timestamp(row["occurred_at"]),
+                    "location": self._normalize_location(row["location"]),
+                    "daily_status": self._normalize_daily_status(row["daily_status"]),
+                }
+            )
+
+        location_paths: list[str] = []
+        location_timelines: list[str] = []
+        location_events_counts: list[int] = []
+
+        for _, person_row in export_df.iterrows():
+            person_id = str(person_row["person_id"])
+            current_location = self._normalize_location(person_row["location"])
+            person_events = events_by_person.get(person_id, [])
+
+            if not person_events:
+                location_paths.append(current_location)
+                location_timelines.append("")
+                location_events_counts.append(0)
+                continue
+
+            visited_locations: list[str] = []
+            timeline_rows: list[str] = []
+            for event in person_events:
+                event_location = event["location"]
+                if event_location not in visited_locations:
+                    visited_locations.append(event_location)
+                occurred_at_value = str(event["occurred_at"])
+                occurred_at_display = occurred_at_value
+                try:
+                    occurred_at_dt = datetime.fromisoformat(occurred_at_value.replace("Z", "+00:00"))
+                    if occurred_at_dt.tzinfo is None:
+                        occurred_at_dt = occurred_at_dt.replace(tzinfo=timezone.utc)
+                    occurred_at_display = occurred_at_dt.astimezone(timezone.utc).strftime("%H:%M")
+                except ValueError:
+                    # Keep original value when timestamp cannot be parsed.
+                    occurred_at_display = occurred_at_value
+
+                timeline_rows.append(
+                    f"שעה: {occurred_at_display}, מיקום: {event_location}, סטטוס: {event['daily_status']}"
+                )
+
+            if current_location not in visited_locations:
+                visited_locations.append(current_location)
+
+            location_paths.append(" -> ".join(visited_locations))
+            location_timelines.append("\n".join(timeline_rows))
+            location_events_counts.append(len(person_events))
+
+        export_df["locations_visited"] = location_paths
+        export_df["location_events_count"] = location_events_counts
+        export_df["location_timeline"] = location_timelines
+        return export_df
+
+    def _build_location_events_export_df(
+        self,
+        snapshot_df: pd.DataFrame,
+        events_df: pd.DataFrame,
+        snapshot_date: date,
+    ) -> pd.DataFrame:
+        """Build detailed location-events export dataframe with person names."""
+        events_source = self._normalize_location_events_df(events_df, snapshot_date)
+        if events_source.empty:
+            return pd.DataFrame(
+                columns=[
+                    "event_id",
+                    "person_id",
+                    "full_name",
+                    "event_type",
+                    "target_event_id",
+                    "is_voided",
+                    "voided_at",
+                    "voided_by_event_id",
+                    "location",
+                    "daily_status",
+                    "occurred_at",
+                    "created_at",
+                    "source",
+                    "date",
+                ]
+            )
+
+        people_source = self._normalize_snapshot_df(snapshot_df, snapshot_date)
+        full_name_by_id = {
+            str(item["person_id"]): str(item["full_name"])
+            for _, item in people_source.iterrows()
+        }
+
+        export_df = self._sort_location_events_df(events_source, descending=True).copy()
+        export_df.insert(
+            2,
+            "full_name",
+            export_df["person_id"].astype(str).map(full_name_by_id).fillna(""),
+        )
+        export_df["event_type"] = export_df["event_type"].map(self._normalize_event_type)
+        export_df["target_event_id"] = export_df["target_event_id"].astype(str).map(
+            lambda item: item.strip() or ""
+        )
+        export_df["is_voided"] = export_df["is_voided"].map(self._parse_bool)
+        export_df["voided_at"] = export_df["voided_at"].map(self._normalize_nullable_event_timestamp)
+        export_df["voided_by_event_id"] = export_df["voided_by_event_id"].astype(str).map(
+            lambda item: item.strip() or ""
+        )
+        export_df["location"] = export_df["location"].map(self._normalize_location)
+        export_df["daily_status"] = export_df["daily_status"].map(self._normalize_daily_status)
+        export_df["occurred_at"] = export_df["occurred_at"].map(self._normalize_event_timestamp)
+        export_df["created_at"] = export_df["created_at"].map(self._normalize_event_timestamp)
+        export_df["source"] = export_df["source"].astype(str).map(
+            lambda item: item.strip() or DEFAULT_EVENT_SOURCE
+        )
+        return export_df[
+            [
+                "event_id",
+                "person_id",
+                "full_name",
+                "event_type",
+                "target_event_id",
+                "is_voided",
+                "voided_at",
+                "voided_by_event_id",
+                "location",
+                "daily_status",
+                "occurred_at",
+                "created_at",
+                "source",
+                "date",
+            ]
+        ]
+
+    def _build_transitions_export_df(
+        self,
+        snapshot_df: pd.DataFrame,
+        events_df: pd.DataFrame,
+        snapshot_date: date,
+    ) -> pd.DataFrame:
+        """Build transitions export dataframe for all people on selected date."""
+        transitions_df = self._build_transitions_df(snapshot_df, events_df, snapshot_date)
+        if transitions_df.empty:
+            return pd.DataFrame(columns=TRANSITION_COLUMNS)
+        return self._sort_transitions_df(transitions_df, descending=True).reset_index(drop=True)
 
     def _row_to_record(self, row: pd.Series) -> dict:
         """Convert one dataframe row into API response dictionary."""
@@ -887,6 +1422,47 @@ class SnapshotService:
             ),
             "notes": self._normalize_notes(row["notes"]),
             "last_updated": self._normalize_timestamp(row["last_updated"]),
+            "date": date.fromisoformat(str(row["date"])),
+        }
+
+    def _event_row_to_record(self, row: pd.Series) -> dict:
+        """Convert one location-event dataframe row into API response dictionary."""
+        return {
+            "event_id": str(row["event_id"]),
+            "person_id": str(row["person_id"]),
+            "event_type": self._normalize_event_type(row.get("event_type", "move")),
+            "location": self._normalize_location(row["location"]),
+            "daily_status": self._normalize_daily_status(row["daily_status"]),
+            "target_event_id": self._empty_to_none(str(row.get("target_event_id", "")).strip()),
+            "is_voided": self._parse_bool(row.get("is_voided")),
+            "voided_at": self._empty_to_none(self._normalize_nullable_event_timestamp(row.get("voided_at", ""))),
+            "voided_by_event_id": self._empty_to_none(str(row.get("voided_by_event_id", "")).strip()),
+            "occurred_at": self._normalize_event_timestamp(row["occurred_at"]),
+            "created_at": self._normalize_event_timestamp(row["created_at"]),
+            "source": str(row["source"]).strip() or DEFAULT_EVENT_SOURCE,
+            "date": date.fromisoformat(str(row["date"])),
+        }
+
+    def _transition_row_to_record(self, row: pd.Series) -> dict:
+        """Convert one transition dataframe row into API response dictionary."""
+        dwell_minutes_raw = row.get("dwell_minutes", 0)
+        try:
+            dwell_minutes = int(dwell_minutes_raw)
+        except (TypeError, ValueError):
+            dwell_minutes = 0
+
+        return {
+            "transition_id": str(row["transition_id"]),
+            "person_id": str(row["person_id"]),
+            "full_name": str(row.get("full_name", "")),
+            "from_location": self._normalize_location(row["from_location"]),
+            "to_location": self._normalize_location(row["to_location"]),
+            "moved_at": self._normalize_event_timestamp(row["moved_at"]),
+            "from_occurred_at": self._normalize_event_timestamp(row["from_occurred_at"]),
+            "to_occurred_at": self._normalize_event_timestamp(row["to_occurred_at"]),
+            "dwell_minutes": max(0, dwell_minutes),
+            "from_event_id": str(row["from_event_id"]),
+            "to_event_id": str(row["to_event_id"]),
             "date": date.fromisoformat(str(row["date"])),
         }
 
@@ -907,6 +1483,46 @@ class SnapshotService:
         if not cleaned or cleaned.lower() == "nan":
             return None
         return cleaned
+
+    def _normalize_event_type(self, value: object) -> str:
+        """Normalize location-event type to known values."""
+        cleaned = str(value).strip().lower() if value is not None else ""
+        return cleaned if cleaned in VALID_EVENT_TYPES else "move"
+
+    def _parse_bool(self, value: object) -> bool:
+        """Normalize mixed bool/string values from Excel into bool."""
+        if isinstance(value, bool):
+            return value
+        if value is None:
+            return False
+        if isinstance(value, (int, float)):
+            return bool(value)
+
+        cleaned = str(value).strip().lower()
+        if cleaned in {"1", "true", "yes", "y", "כן"}:
+            return True
+        if cleaned in {"0", "false", "no", "n", "לא", ""}:
+            return False
+        return False
+
+    def _normalize_nullable_event_timestamp(self, value: object) -> str:
+        """Normalize nullable event timestamp; keep empty values empty."""
+        if value is None:
+            return ""
+
+        candidate = str(value).strip()
+        if not candidate or candidate.lower() == "nan":
+            return ""
+
+        try:
+            parsed = datetime.fromisoformat(candidate.replace("Z", "+00:00"))
+        except ValueError:
+            return ""
+
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+
+        return parsed.astimezone(timezone.utc).isoformat()
 
     def _validate_location_allowed(self, location_value: str, *, field_name: str) -> None:
         """Validate location value against configured location options list."""
@@ -973,9 +1589,359 @@ class SnapshotService:
         except ValueError:
             return self._now_iso()
 
+    def _normalize_optional_event_timestamp(self, value: object, *, field_name: str) -> str:
+        """Normalize optional location-event timestamp input, raising validation errors for bad values."""
+        if value is None:
+            return self._now_iso_precise()
+
+        candidate = str(value).strip()
+        if not candidate:
+            return self._now_iso_precise()
+
+        try:
+            parsed = datetime.fromisoformat(candidate.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValidationError(f"{field_name} must be a valid ISO datetime") from exc
+
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+
+        return parsed.astimezone(timezone.utc).isoformat()
+
     def _now_iso(self) -> str:
         """Return current UTC time in ISO format without microseconds."""
         return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+    def _now_iso_precise(self) -> str:
+        """Return current UTC time in ISO format including microseconds."""
+        return datetime.now(timezone.utc).isoformat()
+
+    def _normalize_event_timestamp(self, value: object) -> str:
+        """Normalize event timestamps to UTC ISO format while preserving microseconds."""
+        if value is None:
+            return self._now_iso_precise()
+
+        candidate = str(value).strip()
+        if not candidate or candidate.lower() == "nan":
+            return self._now_iso_precise()
+
+        try:
+            parsed = datetime.fromisoformat(candidate.replace("Z", "+00:00"))
+        except ValueError:
+            return self._now_iso_precise()
+
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+
+        return parsed.astimezone(timezone.utc).isoformat()
+
+    def _sort_location_events_df(
+        self,
+        df: pd.DataFrame,
+        *,
+        descending: bool = False,
+    ) -> pd.DataFrame:
+        """Return events dataframe sorted by timeline fields in deterministic order."""
+        if df.empty:
+            return df
+
+        return df.sort_values(
+            by=["occurred_at", "created_at", "event_id"],
+            ascending=not descending,
+            kind="stable",
+        )
+
+    def _build_transitions_df(
+        self,
+        snapshot_df: pd.DataFrame,
+        events_df: pd.DataFrame,
+        snapshot_date: date,
+    ) -> pd.DataFrame:
+        """Build computed transitions dataframe from active move events only."""
+        people_source = self._normalize_snapshot_df(snapshot_df, snapshot_date)
+        full_name_by_id = {
+            str(item["person_id"]): str(item["full_name"])
+            for _, item in people_source.iterrows()
+        }
+
+        events_source = self._normalize_location_events_df(events_df, snapshot_date)
+        active_moves = self._filter_active_move_events(events_source)
+        if active_moves.empty:
+            return pd.DataFrame(columns=TRANSITION_COLUMNS)
+
+        transitions_rows: list[dict] = []
+        sorted_moves = self._sort_location_events_df(active_moves, descending=False)
+        for person_id, person_events in sorted_moves.groupby("person_id", sort=False):
+            person_rows = person_events.reset_index(drop=True)
+            if len(person_rows.index) < 2:
+                continue
+
+            for index in range(1, len(person_rows.index)):
+                previous = person_rows.iloc[index - 1]
+                current = person_rows.iloc[index]
+                from_location = self._normalize_location(previous["location"])
+                to_location = self._normalize_location(current["location"])
+                if from_location == to_location:
+                    continue
+
+                previous_at = self._normalize_event_timestamp(previous["occurred_at"])
+                current_at = self._normalize_event_timestamp(current["occurred_at"])
+                try:
+                    previous_dt = datetime.fromisoformat(previous_at.replace("Z", "+00:00"))
+                    current_dt = datetime.fromisoformat(current_at.replace("Z", "+00:00"))
+                except ValueError:
+                    continue
+
+                if previous_dt.tzinfo is None:
+                    previous_dt = previous_dt.replace(tzinfo=timezone.utc)
+                if current_dt.tzinfo is None:
+                    current_dt = current_dt.replace(tzinfo=timezone.utc)
+
+                dwell_seconds = (current_dt - previous_dt).total_seconds()
+                dwell_minutes = int(max(0, dwell_seconds) // 60)
+                to_event_id = str(current["event_id"])
+                transition_id = f"T-{to_event_id}"
+
+                transitions_rows.append(
+                    {
+                        "transition_id": transition_id,
+                        "person_id": str(person_id),
+                        "full_name": full_name_by_id.get(str(person_id), ""),
+                        "from_location": from_location,
+                        "to_location": to_location,
+                        "moved_at": current_at,
+                        "from_occurred_at": previous_at,
+                        "to_occurred_at": current_at,
+                        "dwell_minutes": dwell_minutes,
+                        "from_event_id": str(previous["event_id"]),
+                        "to_event_id": to_event_id,
+                        "date": snapshot_date.isoformat(),
+                    }
+                )
+
+        if not transitions_rows:
+            return pd.DataFrame(columns=TRANSITION_COLUMNS)
+
+        transitions_df = pd.DataFrame(transitions_rows, columns=TRANSITION_COLUMNS)
+        transitions_df["dwell_minutes"] = transitions_df["dwell_minutes"].astype(int)
+        return transitions_df
+
+    def _sort_transitions_df(
+        self,
+        df: pd.DataFrame,
+        *,
+        descending: bool = False,
+    ) -> pd.DataFrame:
+        """Sort transitions deterministically."""
+        if df.empty:
+            return df
+
+        return df.sort_values(
+            by=["moved_at", "to_event_id", "transition_id"],
+            ascending=not descending,
+            kind="stable",
+        )
+
+    def _find_person_row_index(self, snapshot_df: pd.DataFrame, person_id: str) -> int:
+        """Resolve person row index by exact person_id."""
+        matches = snapshot_df.index[snapshot_df["person_id"] == person_id].tolist()
+        if not matches:
+            raise NotFoundError(f"Person '{person_id}' was not found in snapshot")
+        return int(matches[0])
+
+    def _validate_person_exists(self, snapshot_df: pd.DataFrame, person_id: str) -> None:
+        """Validate that person_id exists in provided snapshot dataframe."""
+        _ = self._find_person_row_index(snapshot_df, person_id)
+
+    def _append_location_event(
+        self,
+        *,
+        events_df: pd.DataFrame,
+        snapshot_date: date,
+        person_id: str,
+        event_type: str,
+        target_event_id: str | None = None,
+        location: str,
+        daily_status: str,
+        occurred_at: str,
+        source: str = DEFAULT_EVENT_SOURCE,
+    ) -> tuple[dict, pd.DataFrame]:
+        """Append one location event row and return created record plus updated dataframe."""
+        normalized_events = self._normalize_location_events_df(events_df, snapshot_date)
+        normalized_event_type = str(event_type).strip().lower()
+        if normalized_event_type not in VALID_EVENT_TYPES:
+            allowed = ", ".join(sorted(VALID_EVENT_TYPES))
+            raise ValidationError(f"event_type must be one of: {allowed}")
+
+        normalized_target_event_id = str(target_event_id).strip() if target_event_id is not None else ""
+        if normalized_event_type == "move":
+            normalized_target_event_id = ""
+
+        used_event_ids = (
+            set(normalized_events["event_id"].astype(str).tolist())
+            if not normalized_events.empty
+            else set()
+        )
+        event_id = self._generate_event_id(used_event_ids)
+        created_at = self._now_iso_precise()
+
+        new_row = {
+            "event_id": event_id,
+            "person_id": person_id,
+            "event_type": normalized_event_type,
+            "target_event_id": normalized_target_event_id,
+            "is_voided": False,
+            "voided_at": "",
+            "voided_by_event_id": "",
+            "location": self._normalize_location(location),
+            "daily_status": self._normalize_daily_status(daily_status),
+            "occurred_at": self._normalize_event_timestamp(occurred_at),
+            "created_at": created_at,
+            "source": str(source).strip() or DEFAULT_EVENT_SOURCE,
+            "date": snapshot_date.isoformat(),
+        }
+        combined_df = pd.concat(
+            [normalized_events, pd.DataFrame([new_row], columns=LOCATION_EVENT_COLUMNS)],
+            ignore_index=True,
+        )
+        combined_df = self._normalize_location_events_df(combined_df, snapshot_date)
+        self.save_location_events(snapshot_date, combined_df)
+
+        created_row = combined_df.loc[combined_df["event_id"] == event_id].iloc[0]
+        return self._event_row_to_record(created_row), combined_df
+
+    def _filter_active_move_events(self, events_df: pd.DataFrame) -> pd.DataFrame:
+        """Filter only active move events (ignore correction/undo and voided rows)."""
+        if events_df is None or events_df.empty:
+            return pd.DataFrame(columns=LOCATION_EVENT_COLUMNS)
+
+        filtered = events_df.copy()
+        for column in LOCATION_EVENT_COLUMNS:
+            if column not in filtered.columns:
+                filtered[column] = ""
+
+        filtered["event_type"] = filtered["event_type"].map(self._normalize_event_type)
+        filtered["is_voided"] = filtered["is_voided"].map(self._parse_bool)
+        filtered = filtered[
+            (filtered["event_type"] == "move")
+            & (~filtered["is_voided"])
+        ].copy()
+        if filtered.empty:
+            return pd.DataFrame(columns=LOCATION_EVENT_COLUMNS)
+        return filtered[LOCATION_EVENT_COLUMNS].copy()
+
+    def _get_latest_active_move_event_for_person(
+        self,
+        events_df: pd.DataFrame,
+        person_id: str,
+    ) -> dict | None:
+        """Return latest active move event record for one person or None."""
+        active_moves = self._filter_active_move_events(events_df)
+        if active_moves.empty:
+            return None
+
+        person_events = active_moves[active_moves["person_id"] == person_id].copy()
+        if person_events.empty:
+            return None
+
+        latest_row = self._sort_location_events_df(person_events, descending=True).iloc[0]
+        return self._event_row_to_record(latest_row)
+
+    def _apply_current_state_from_events(
+        self,
+        snapshot_df: pd.DataFrame,
+        row_index: int,
+        person_id: str,
+        events_df: pd.DataFrame,
+    ) -> None:
+        """Apply current snapshot state from latest active move event for this person."""
+        latest_move = self._get_latest_active_move_event_for_person(events_df, person_id)
+        if latest_move is None:
+            snapshot_df.at[row_index, "location"] = DEFAULT_LOCATION
+            snapshot_df.at[row_index, "daily_status"] = DEFAULT_DAILY_STATUS
+            snapshot_df.at[row_index, "last_updated"] = self._now_iso()
+            return
+
+        snapshot_df.at[row_index, "location"] = self._normalize_location(latest_move["location"])
+        snapshot_df.at[row_index, "daily_status"] = self._normalize_daily_status(latest_move["daily_status"])
+        snapshot_df.at[row_index, "last_updated"] = self._now_iso()
+
+    def _build_transition_warning(
+        self,
+        previous_move_event: dict | None,
+        new_move_event: dict,
+    ) -> str | None:
+        """Build warning message for suspiciously fast location transitions."""
+        if previous_move_event is None:
+            return None
+
+        from_location = self._normalize_location(previous_move_event.get("location", ""))
+        to_location = self._normalize_location(new_move_event.get("location", ""))
+        if from_location == to_location:
+            return None
+
+        try:
+            previous_time = datetime.fromisoformat(
+                str(previous_move_event.get("occurred_at", "")).replace("Z", "+00:00")
+            )
+            new_time = datetime.fromisoformat(str(new_move_event.get("occurred_at", "")).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+
+        if previous_time.tzinfo is None:
+            previous_time = previous_time.replace(tzinfo=timezone.utc)
+        if new_time.tzinfo is None:
+            new_time = new_time.replace(tzinfo=timezone.utc)
+
+        delta_seconds = (new_time - previous_time).total_seconds()
+        if delta_seconds < 0:
+            return None
+        if delta_seconds >= SUSPICIOUS_TRANSITION_SECONDS:
+            return None
+
+        return (
+            f"מעבר חשוד: מעבר מ-{from_location} ל-{to_location} תוך "
+            f"{int(delta_seconds)} שניות בלבד."
+        )
+
+    def _build_person_location_events_payload(
+        self,
+        person_id: str,
+        snapshot_date: date,
+        *,
+        events_df: pd.DataFrame | None = None,
+        include_voided: bool = True,
+        last_action_event_id: str | None = None,
+        last_action_type: str | None = None,
+        latest_transition_warning: str | None = None,
+    ) -> dict:
+        """Build API payload for one person's date tracking events timeline."""
+        source_df = (
+            self._normalize_location_events_df(events_df, snapshot_date)
+            if events_df is not None
+            else self.load_location_events(snapshot_date)
+        )
+        payload = {
+            "date": snapshot_date,
+            "person_id": person_id,
+            "events": [],
+            "last_action_event_id": self._empty_to_none(str(last_action_event_id or "").strip()),
+            "last_action_type": self._empty_to_none(str(last_action_type or "").strip()),
+            "latest_transition_warning": self._empty_to_none(str(latest_transition_warning or "").strip()),
+        }
+        if source_df.empty:
+            return payload
+
+        person_events = source_df[source_df["person_id"] == person_id].copy()
+        if person_events.empty:
+            return payload
+
+        if not include_voided:
+            person_events = person_events[~person_events["is_voided"].map(self._parse_bool)].copy()
+
+        person_events = self._sort_location_events_df(person_events, descending=True)
+        payload["events"] = [self._event_row_to_record(row) for _, row in person_events.iterrows()]
+        return payload
 
     def _find_row_index_for_lookup(self, snapshot_df: pd.DataFrame, person_lookup: str) -> int:
         """Resolve one row index from person_id or full_name lookup text."""

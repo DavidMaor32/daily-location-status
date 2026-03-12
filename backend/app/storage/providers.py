@@ -86,6 +86,17 @@ class LocalStorageProvider(StorageProvider):
                 except OSError:
                     pass
 
+    def delete(self, key: str) -> bool:
+        """Delete object key from local storage (returns False when key is missing)."""
+        file_path = self._resolve(key)
+        if not file_path.exists():
+            return False
+        try:
+            file_path.unlink()
+            return True
+        except OSError as exc:
+            raise StorageError(f"Failed deleting local storage key: {key}") from exc
+
     def list_keys(self, prefix: str) -> list[str]:
         """List object keys under a local prefix path."""
         base_path = self._resolve(prefix)
@@ -137,6 +148,17 @@ class S3StorageProvider(StorageProvider):
             self.client.put_object(Bucket=self.bucket, Key=key, Body=content)
         except ClientError as exc:
             raise StorageError(f"Failed writing S3 key: {key}") from exc
+
+    def delete(self, key: str) -> bool:
+        """Delete object key from S3 (returns False when key is missing)."""
+        exists = self.exists(key)
+        if not exists:
+            return False
+        try:
+            self.client.delete_object(Bucket=self.bucket, Key=key)
+            return True
+        except ClientError as exc:
+            raise StorageError(f"Failed deleting S3 key: {key}") from exc
 
     def list_keys(self, prefix: str) -> list[str]:
         """List S3 object keys under a prefix."""
@@ -224,6 +246,28 @@ class MirroredStorageProvider(StorageProvider):
         raise StorageError(
             f"Mirror write failed for key '{key}'. Local write succeeded but S3 sync failed."
         ) from last_error
+
+    def delete(self, key: str) -> bool:
+        """
+        Delete key from both mirror and primary storage.
+
+        Deleting mirror first prevents stale mirror objects from restoring deleted local keys.
+        """
+        primary_exists = self.primary.exists(key)
+        try:
+            mirror_exists = self.mirror.exists(key)
+        except StorageError as exc:
+            raise StorageError(f"Mirror exists check failed before delete for key: {key}") from exc
+
+        if not primary_exists and not mirror_exists:
+            return False
+
+        # Delete mirror first, so missing primary will not be re-hydrated from stale mirror.
+        if mirror_exists:
+            self.mirror.delete(key)
+        if primary_exists:
+            self.primary.delete(key)
+        return True
 
     def list_keys(self, prefix: str) -> list[str]:
         """Return union of keys from primary and mirror backends."""

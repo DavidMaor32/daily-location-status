@@ -22,6 +22,11 @@ class StorageProvider(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def delete(self, key: str) -> bool:
+        """Delete object by key and return True when object existed and was removed."""
+        raise NotImplementedError
+
+    @abstractmethod
     def list_keys(self, prefix: str) -> list[str]:
         """List keys that match a given prefix."""
         raise NotImplementedError

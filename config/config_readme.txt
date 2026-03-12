@@ -57,8 +57,8 @@ storage.local_storage_dir
 - Example: "./local_storage"
 
 storage.seed_people_file
-- Description: Initial people CSV file, used only if master file does not yet exist.
-- Example: "./backend/data/sample_people.csv"
+- Description: Initial people seed file (prefer Excel), used only if master file does not yet exist.
+- Example: "./backend/data/sample_people.xlsx"
 
 storage.snapshot_restore_policy
 - Description: Policy for restoring historical day into today.

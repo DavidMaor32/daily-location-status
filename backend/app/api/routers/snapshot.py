@@ -60,3 +60,14 @@ def restore_history_to_today(
     """Restore one historical date into today's snapshot."""
     parsed_date = parse_date(snapshot_date)
     return SnapshotResponse(**service.restore_snapshot_to_today(parsed_date))
+
+
+@router.delete("/api/snapshot/{snapshot_date}")
+def delete_snapshot_file(
+    snapshot_date: str,
+    _: None = Depends(require_write_access),
+    service: SnapshotService = Depends(service_dep),
+) -> dict:
+    """Delete one snapshot date file (and its tracking events file)."""
+    parsed_date = parse_date(snapshot_date)
+    return service.delete_snapshot_for_date(parsed_date)

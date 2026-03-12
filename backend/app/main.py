@@ -12,6 +12,7 @@ from app.api.routers.export import router as export_router
 from app.api.routers.locations import router as locations_router
 from app.api.routers.people import router as people_router
 from app.api.routers.snapshot import router as snapshot_router
+from app.api.routers.tracking import router as tracking_router
 from app.exceptions import AppError, NotFoundError, StorageError, ValidationError
 from app.models import SystemStatusResponse
 from app.services.telegram_bot_service import TelegramBotService
@@ -132,6 +133,7 @@ app.include_router(snapshot_router)
 app.include_router(export_router)
 app.include_router(locations_router)
 app.include_router(people_router)
+app.include_router(tracking_router)
 
 
 @app.get("/api/health")

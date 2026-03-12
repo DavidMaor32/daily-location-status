@@ -50,6 +50,7 @@ function PersonTable({
   telegramMessage,
   onQuickUpdate,
   onEdit,
+  onTrack,
 }) {
   return (
     <div className="table-wrapper">
@@ -188,6 +189,12 @@ function PersonTable({
                 <td>{person.notes || "-"}</td>
                 <td>{formatTimestamp(person.last_updated)}</td>
                 <td>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => onTrack(person)}
+                  >
+                    מעקב
+                  </button>
                   <button
                     className="btn btn-secondary"
                     onClick={() => onEdit(person)}

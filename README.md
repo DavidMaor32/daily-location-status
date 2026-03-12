@@ -70,7 +70,7 @@ Typical local values:
 
 - `storage.mode: "local"`
 - `storage.local_storage_dir: "./local_storage"`
-- `storage.seed_people_file: "./backend/data/sample_people.csv"`
+- `storage.seed_people_file: "./backend/data/sample_people.xlsx"`
 - `security.write_api_key: ""`
 - `frontend.api_base_url: ""`
 - `frontend.dev_proxy_target: "http://localhost:8000"`
@@ -175,9 +175,17 @@ Self-report status (`self_daily_status`):
 - `PATCH /api/people/{person_id}`
 - `PUT /api/people/{person_id}`
 - `DELETE /api/people/{person_id}`
+- `GET /api/people/{person_id}/location-events?snapshot_date=YYYY-MM-DD`
+- `POST /api/people/{person_id}/location-events`
+- `DELETE /api/people/{person_id}/location-events/{event_id}`
 - `POST /api/self-report`
 - `GET /api/export/day/{YYYY-MM-DD}`
 - `GET /api/export/range?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD`
+
+Export workbook format:
+
+- Sheet `snapshot`: current daily state + tracking summary columns (`locations_visited`, `location_events_count`, `location_timeline`).
+- Sheet `location_events`: raw per-person movement events for that day.
 
 ## Tests & Build
 

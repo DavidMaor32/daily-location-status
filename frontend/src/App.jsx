@@ -4,22 +4,28 @@ import {
   addInitialPeopleList,
   addPerson,
   createLocation,
+  createPersonLocationEvent,
   deleteLocation,
+  deletePersonLocationEvent,
   deletePerson,
   downloadDaySnapshot,
   downloadRangeSnapshots,
   fetchAvailableDates,
   fetchLocations,
+  fetchPersonLocationEvents,
+  fetchPersonTransitions,
   fetchSnapshotByDate,
   fetchSystemStatus,
   fetchTodaySnapshot,
   getTodayString,
   quickUpdatePerson,
   saveSnapshotNow,
+  deleteSnapshotDate,
   replacePerson,
   restoreHistoryToToday,
 } from "./api/client";
 import PersonFormModal from "./components/PersonFormModal";
+import PersonTrackingModal from "./components/PersonTrackingModal";
 import PersonTable from "./components/PersonTable";
 import {
   DEFAULT_LOCATION_OPTIONS,
@@ -33,6 +39,8 @@ import {
 } from "./constants/statuses";
 
 const AUTO_REFRESH_MS = 5000;
+const UNDO_WINDOW_SECONDS = 15;
+const SUSPICIOUS_TRANSITION_SECONDS = 120;
 const DEFAULT_SYSTEM_STATUS = {
   telegram_enabled: false,
   telegram_configured: false,
@@ -124,6 +132,16 @@ function App() {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState("add");
   const [editingPerson, setEditingPerson] = useState(null);
+  const [trackingModalOpen, setTrackingModalOpen] = useState(false);
+  const [trackingPerson, setTrackingPerson] = useState(null);
+  const [trackingEvents, setTrackingEvents] = useState([]);
+  const [trackingTransitions, setTrackingTransitions] = useState([]);
+  const [trackingLastActionEventId, setTrackingLastActionEventId] = useState("");
+  const [trackingLastActionType, setTrackingLastActionType] = useState("");
+  const [latestTransitionWarning, setLatestTransitionWarning] = useState("");
+  const [undoExpiresAtMs, setUndoExpiresAtMs] = useState(0);
+  const [undoSecondsLeft, setUndoSecondsLeft] = useState(0);
+  const [trackingLoading, setTrackingLoading] = useState(false);
 
   const isReadOnly = snapshot.date !== todayString;
 
@@ -171,6 +189,49 @@ function App() {
         String(a?.full_name || "").localeCompare(String(b?.full_name || ""), "he")
       );
   }, [snapshot.people, searchTerm, locationFilter, statusFilter]);
+
+  useEffect(() => {
+    if (!trackingPerson) {
+      return;
+    }
+    const refreshedPerson = snapshot.people.find(
+      (item) => item.person_id === trackingPerson.person_id
+    );
+    if (!refreshedPerson) {
+      setTrackingModalOpen(false);
+      setTrackingPerson(null);
+      setTrackingEvents([]);
+      setTrackingTransitions([]);
+      setTrackingLastActionEventId("");
+      setTrackingLastActionType("");
+      setLatestTransitionWarning("");
+      setUndoExpiresAtMs(0);
+      return;
+    }
+    setTrackingPerson(refreshedPerson);
+  }, [snapshot.people, trackingPerson]);
+
+  useEffect(() => {
+    if (!undoExpiresAtMs) {
+      setUndoSecondsLeft(0);
+      return undefined;
+    }
+
+    const updateCountdown = () => {
+      const seconds = Math.max(
+        0,
+        Math.ceil((undoExpiresAtMs - Date.now()) / 1000)
+      );
+      setUndoSecondsLeft(seconds);
+      if (seconds <= 0) {
+        setUndoExpiresAtMs(0);
+      }
+    };
+
+    updateCountdown();
+    const timerId = window.setInterval(updateCountdown, 1000);
+    return () => window.clearInterval(timerId);
+  }, [undoExpiresAtMs]);
 
   useEffect(() => {
     initialize();
@@ -253,6 +314,59 @@ function App() {
     setLocationOptions(uniqueLocations([...DEFAULT_LOCATION_OPTIONS, ...safeApiLocations]));
   }
 
+  function applyTrackingResponse(response, { allowUndoStart = false } = {}) {
+    const safeEvents = Array.isArray(response?.events) ? response.events : [];
+    setTrackingEvents(safeEvents);
+    const lastActionEventId = String(response?.last_action_event_id || "");
+    const lastActionType = String(response?.last_action_type || "");
+    const warningText = String(response?.latest_transition_warning || "");
+    setTrackingLastActionEventId(lastActionEventId);
+    setTrackingLastActionType(lastActionType);
+    setLatestTransitionWarning(warningText);
+
+    if (allowUndoStart && lastActionType === "move" && lastActionEventId) {
+      const deadlineMs = Date.now() + UNDO_WINDOW_SECONDS * 1000;
+      setUndoExpiresAtMs(deadlineMs);
+      return;
+    }
+
+    if (!allowUndoStart || lastActionType === "undo" || lastActionType === "correction") {
+      setUndoExpiresAtMs(0);
+    }
+  }
+
+  function shouldConfirmSuspiciousTransition(payload) {
+    const toLocation = String(payload?.location || "");
+    if (!toLocation) {
+      return false;
+    }
+
+    const toDate = payload?.occurred_at ? new Date(payload.occurred_at) : new Date();
+    if (Number.isNaN(toDate.getTime())) {
+      return false;
+    }
+
+    const latestActiveMove = trackingEvents.find(
+      (item) => item?.event_type === "move" && !item?.is_voided
+    );
+    if (!latestActiveMove) {
+      return false;
+    }
+
+    const fromLocation = String(latestActiveMove.location || "");
+    if (!fromLocation || fromLocation === toLocation) {
+      return false;
+    }
+
+    const fromDate = new Date(latestActiveMove.occurred_at);
+    if (Number.isNaN(fromDate.getTime())) {
+      return false;
+    }
+
+    const diffSeconds = (toDate.getTime() - fromDate.getTime()) / 1000;
+    return diffSeconds >= 0 && diffSeconds < SUSPICIOUS_TRANSITION_SECONDS;
+  }
+
   async function loadSelectedDate(dateValue) {
     setLoading(true);
     setError("");
@@ -276,15 +390,164 @@ function App() {
     }
   }
 
-  function triggerBlobDownload(blob, filename) {
-    const url = URL.createObjectURL(blob);
+  async function loadTrackingEvents(personId, dateValue) {
+    setTrackingLoading(true);
+    setError("");
+    try {
+      const [eventsResponse, transitionsResponse] = await Promise.all([
+        fetchPersonLocationEvents(personId, dateValue, { includeVoided: true }),
+        fetchPersonTransitions(personId, dateValue),
+      ]);
+      applyTrackingResponse(eventsResponse, { allowUndoStart: false });
+      setTrackingTransitions(
+        Array.isArray(transitionsResponse?.transitions)
+          ? transitionsResponse.transitions
+          : []
+      );
+    } catch (err) {
+      setTrackingEvents([]);
+      setTrackingTransitions([]);
+      setTrackingLastActionEventId("");
+      setTrackingLastActionType("");
+      setLatestTransitionWarning("");
+      setUndoExpiresAtMs(0);
+      setError(getErrorMessage(err, "טעינת מעקב מיקומים נכשלה"));
+    } finally {
+      setTrackingLoading(false);
+    }
+  }
+
+  function openTrackingModal(person) {
+    if (!person?.person_id) {
+      return;
+    }
+    setTrackingPerson(person);
+    setTrackingEvents([]);
+    setTrackingTransitions([]);
+    setTrackingLastActionEventId("");
+    setTrackingLastActionType("");
+    setLatestTransitionWarning("");
+    setUndoExpiresAtMs(0);
+    setTrackingModalOpen(true);
+    loadTrackingEvents(person.person_id, snapshot.date);
+  }
+
+  async function handleAddTrackingEvent(payload) {
+    if (!trackingPerson || isReadOnly) {
+      return;
+    }
+
+    if (shouldConfirmSuspiciousTransition(payload)) {
+      const approved = window.confirm(
+        "זוהה מעבר חשוד (פחות מ-2 דקות מהמעבר הקודם). להמשיך בכל זאת?"
+      );
+      if (!approved) {
+        return;
+      }
+    }
+
+    setTrackingLoading(true);
+    setError("");
+    try {
+      const response = await createPersonLocationEvent(
+        trackingPerson.person_id,
+        payload
+      );
+      applyTrackingResponse(response, { allowUndoStart: true });
+      const transitionsResponse = await fetchPersonTransitions(
+        trackingPerson.person_id,
+        snapshot.date
+      );
+      setTrackingTransitions(
+        Array.isArray(transitionsResponse?.transitions)
+          ? transitionsResponse.transitions
+          : []
+      );
+      await loadSelectedDate(todayString);
+    } catch (err) {
+      setError(getErrorMessage(err, "הוספת אירוע מיקום נכשלה"));
+    } finally {
+      setTrackingLoading(false);
+    }
+  }
+
+  async function handleDeleteTrackingEvent(eventId) {
+    if (!trackingPerson || !eventId || isReadOnly) {
+      return;
+    }
+
+    const approved = window.confirm("למחוק את אירוע המיקום שנבחר?");
+    if (!approved) {
+      return;
+    }
+
+    setTrackingLoading(true);
+    setError("");
+    try {
+      const response = await deletePersonLocationEvent(
+        trackingPerson.person_id,
+        eventId,
+        "correction"
+      );
+      applyTrackingResponse(response, { allowUndoStart: false });
+      const transitionsResponse = await fetchPersonTransitions(
+        trackingPerson.person_id,
+        snapshot.date
+      );
+      setTrackingTransitions(
+        Array.isArray(transitionsResponse?.transitions)
+          ? transitionsResponse.transitions
+          : []
+      );
+      await loadSelectedDate(todayString);
+    } catch (err) {
+      setError(getErrorMessage(err, "מחיקת אירוע מיקום נכשלה"));
+    } finally {
+      setTrackingLoading(false);
+    }
+  }
+
+  async function handleUndoLastTrackingAction() {
+    if (!trackingPerson || isReadOnly || !trackingLastActionEventId || undoSecondsLeft <= 0) {
+      return;
+    }
+
+    setTrackingLoading(true);
+    setError("");
+    try {
+      const response = await deletePersonLocationEvent(
+        trackingPerson.person_id,
+        trackingLastActionEventId,
+        "undo"
+      );
+      applyTrackingResponse(response, { allowUndoStart: false });
+      const transitionsResponse = await fetchPersonTransitions(
+        trackingPerson.person_id,
+        snapshot.date
+      );
+      setTrackingTransitions(
+        Array.isArray(transitionsResponse?.transitions)
+          ? transitionsResponse.transitions
+          : []
+      );
+      await loadSelectedDate(todayString);
+    } catch (err) {
+      setError(getErrorMessage(err, "ביטול הפעולה האחרונה נכשל"));
+    } finally {
+      setTrackingLoading(false);
+    }
+  }
+
+  function triggerFileDownload(url, filename) {
     const link = document.createElement("a");
     link.href = url;
-    link.download = filename;
+    if (filename) {
+      link.download = filename;
+    }
+    link.rel = "noopener";
     document.body.appendChild(link);
     link.click();
     link.remove();
-    URL.revokeObjectURL(url);
   }
 
   async function handleDownloadDayFile() {
@@ -296,8 +559,8 @@ function App() {
     setActionLoading(true);
     setError("");
     try {
-      const { blob, filename } = await downloadDaySnapshot(selectedDate);
-      triggerBlobDownload(blob, filename);
+      const { url, filename } = downloadDaySnapshot(selectedDate);
+      triggerFileDownload(url, filename);
     } catch (err) {
       setError(getErrorMessage(err, "הורדת קובץ היום נכשלה"));
     } finally {
@@ -339,11 +602,11 @@ function App() {
     setActionLoading(true);
     setError("");
     try {
-      const { blob, filename } = await downloadRangeSnapshots(
+      const { url, filename } = downloadRangeSnapshots(
         downloadFromDate,
         downloadToDate
       );
-      triggerBlobDownload(blob, filename);
+      triggerFileDownload(url, filename);
     } catch (err) {
       setError(getErrorMessage(err, "הורדת קבצי הטווח נכשלה"));
     } finally {
@@ -489,9 +752,7 @@ function App() {
       return;
     }
 
-    const approved = window.confirm(
-      `למחוק את ${editingPerson.full_name} מרשימת האנשים?`
-    );
+    const approved = window.confirm(`למחוק את ${editingPerson.full_name} מרשימת האנשים?`);
     if (!approved) {
       return;
     }
@@ -537,12 +798,46 @@ function App() {
     }
   }
 
+  async function handleDeleteDate() {
+    if (!isReadOnly || !snapshot.date) {
+      return;
+    }
+
+    const targetDate = snapshot.date;
+    const approved = window.confirm(
+      `האם אתה בטוח שברצונך למחוק את התאריך ${targetDate}?\nהפעולה תמחק את קובץ האקסל של התאריך ואת נתוני המעקב שלו.`
+    );
+    if (!approved) {
+      return;
+    }
+
+    setActionLoading(true);
+    setError("");
+    try {
+      await deleteSnapshotDate(targetDate);
+      setTrackingModalOpen(false);
+      setTrackingPerson(null);
+      setTrackingEvents([]);
+      setTrackingTransitions([]);
+      setTrackingLastActionEventId("");
+      setTrackingLastActionType("");
+      setLatestTransitionWarning("");
+      setUndoExpiresAtMs(0);
+      await loadSelectedDate(todayString);
+      window.alert(`התאריך ${targetDate} נמחק בהצלחה.`);
+    } catch (err) {
+      setError(getErrorMessage(err, "מחיקת התאריך נכשלה"));
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
   return (
     <div className="app-shell" dir="rtl">
       <header className="header-card">
         <div>
           <h1>ניהול סטטוס יומי ומיקום</h1>
-          <p className="muted-text">מעקב יומי לפי snapshot לכל תאריך</p>
+          <p className="muted-text">מעקב יומי לפי Snapshot לכל תאריך</p>
           {!isReadOnly ? (
             <p className="muted-text auto-refresh-note">
               {systemStatus.telegram_active
@@ -586,13 +881,22 @@ function App() {
           </div>
 
           {isReadOnly ? (
-            <button
-              className="btn btn-warning"
-              onClick={handleRestoreHistory}
-              disabled={actionLoading}
-            >
-              שחזר ליום הנוכחי
-            </button>
+            <>
+              <button
+                className="btn btn-warning"
+                onClick={handleRestoreHistory}
+                disabled={actionLoading}
+              >
+                שחזר ליום הנוכחי
+              </button>
+              <button
+                className="btn btn-danger"
+                onClick={handleDeleteDate}
+                disabled={actionLoading}
+              >
+                מחק תאריך
+              </button>
+            </>
           ) : null}
         </div>
       </header>
@@ -717,7 +1021,7 @@ function App() {
         </div>
 
         <div className="filter-group download-range-group">
-          <label>הורד הכל לפי טווח</label>
+          <label>הורד הכול לפי טווח</label>
           <div className="download-range-row">
             <input
               type="date"
@@ -736,7 +1040,7 @@ function App() {
               onClick={handleDownloadRangeFiles}
               disabled={actionLoading}
             >
-              הורד הכל (ZIP)
+              הורד הכול (ZIP)
             </button>
           </div>
         </div>
@@ -784,6 +1088,7 @@ function App() {
             telegramMessage={systemStatus.telegram_message}
             onQuickUpdate={handleQuickUpdate}
             onEdit={openEditModal}
+            onTrack={openTrackingModal}
           />
         )}
       </main>
@@ -804,8 +1109,43 @@ function App() {
         }}
         onSubmit={handleModalSubmit}
       />
+
+      <PersonTrackingModal
+        open={trackingModalOpen}
+        person={trackingPerson}
+        readOnly={isReadOnly}
+        loading={trackingLoading || actionLoading}
+        locationOptions={effectiveLocationOptions}
+        events={trackingEvents}
+        transitions={trackingTransitions}
+        latestTransitionWarning={latestTransitionWarning}
+        undoSecondsLeft={undoSecondsLeft}
+        canUndo={Boolean(
+          trackingLastActionEventId &&
+            trackingLastActionType === "move" &&
+            undoSecondsLeft > 0
+        )}
+        onClose={() => {
+          if (trackingLoading || actionLoading) {
+            return;
+          }
+          setTrackingModalOpen(false);
+          setTrackingPerson(null);
+          setTrackingEvents([]);
+          setTrackingTransitions([]);
+          setTrackingLastActionEventId("");
+          setTrackingLastActionType("");
+          setLatestTransitionWarning("");
+          setUndoExpiresAtMs(0);
+        }}
+        onAddEvent={handleAddTrackingEvent}
+        onDeleteEvent={handleDeleteTrackingEvent}
+        onUndoLastAction={handleUndoLastTrackingAction}
+      />
     </div>
   );
 }
 
 export default App;
+
+

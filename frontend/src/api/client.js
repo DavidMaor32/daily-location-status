@@ -2,23 +2,8 @@
 const API_BASE_URL = __API_BASE_URL__ || "";
 const WRITE_API_KEY = __WRITE_API_KEY__ || "";
 
-// Extract filename from Content-Disposition header.
-function extractFilename(contentDisposition, fallbackName) {
-  if (!contentDisposition) {
-    return fallbackName;
-  }
-
-  const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
-  if (utf8Match?.[1]) {
-    return decodeURIComponent(utf8Match[1]);
-  }
-
-  const basicMatch = contentDisposition.match(/filename="?([^";]+)"?/i);
-  if (basicMatch?.[1]) {
-    return basicMatch[1];
-  }
-
-  return fallbackName;
+function buildApiUrl(path) {
+  return `${API_BASE_URL}${path}`;
 }
 
 // Generic JSON request helper with centralized error handling.
@@ -44,22 +29,6 @@ async function apiRequest(path, options = {}) {
   return response.json();
 }
 
-// Generic file download helper that returns blob + resolved filename.
-async function fileRequest(path, fallbackName) {
-  const response = await fetch(`${API_BASE_URL}${path}`);
-  if (!response.ok) {
-    const errorBody = await response.json().catch(() => ({}));
-    throw new Error(errorBody.detail || "הורדת קובץ נכשלה");
-  }
-
-  const blob = await response.blob();
-  const filename = extractFilename(
-    response.headers.get("content-disposition"),
-    fallbackName
-  );
-  return { blob, filename };
-}
-
 // Load today's snapshot from backend.
 export function fetchTodaySnapshot() {
   return apiRequest("/api/snapshot/today");
@@ -77,9 +46,19 @@ export function saveSnapshotNow(snapshotDate) {
   });
 }
 
+// Delete selected snapshot date file (and matching tracking-events file).
+export function deleteSnapshotDate(snapshotDate) {
+  return apiRequest(`/api/snapshot/${snapshotDate}`, {
+    method: "DELETE",
+  });
+}
+
 // Download one day's snapshot file as xlsx.
 export function downloadDaySnapshot(snapshotDate) {
-  return fileRequest(`/api/export/day/${snapshotDate}`, `${snapshotDate}.xlsx`);
+  return {
+    url: buildApiUrl(`/api/export/day/${snapshotDate}`),
+    filename: `${snapshotDate}.xlsx`,
+  };
 }
 
 // Download all snapshot xlsx files between date_from and date_to as zip.
@@ -87,10 +66,10 @@ export function downloadRangeSnapshots(dateFrom, dateTo) {
   const query = `date_from=${encodeURIComponent(dateFrom)}&date_to=${encodeURIComponent(
     dateTo
   )}`;
-  return fileRequest(
-    `/api/export/range?${query}`,
-    `snapshots_${dateFrom}_to_${dateTo}.zip`
-  );
+  return {
+    url: buildApiUrl(`/api/export/range?${query}`),
+    filename: `snapshots_${dateFrom}_to_${dateTo}.zip`,
+  };
 }
 
 // Load list of all available snapshot dates.
@@ -158,6 +137,51 @@ export function replacePerson(personId, payload) {
 // Delete person from today's snapshot and master list.
 export function deletePerson(personId) {
   return apiRequest(`/api/people/${personId}`, {
+    method: "DELETE",
+  });
+}
+
+// Load one person's location-events timeline for selected date (today by default).
+export function fetchPersonLocationEvents(
+  personId,
+  snapshotDate,
+  options = {}
+) {
+  const params = new URLSearchParams();
+  if (snapshotDate) {
+    params.set("snapshot_date", snapshotDate);
+  }
+  if (typeof options.includeVoided === "boolean") {
+    params.set("include_voided", options.includeVoided ? "true" : "false");
+  }
+  const query = params.toString() ? `?${params.toString()}` : "";
+  return apiRequest(`/api/people/${personId}/location-events${query}`);
+}
+
+// Load one person's computed location transitions for selected date.
+export function fetchPersonTransitions(personId, snapshotDate) {
+  const query = snapshotDate
+    ? `?snapshot_date=${encodeURIComponent(snapshotDate)}`
+    : "";
+  return apiRequest(`/api/people/${personId}/transitions${query}`);
+}
+
+// Append one location-event row for a person (today only).
+export function createPersonLocationEvent(personId, payload) {
+  return apiRequest(`/api/people/${personId}/location-events`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+// Void one location-event row for a person (today only).
+export function deletePersonLocationEvent(
+  personId,
+  eventId,
+  reason = "correction"
+) {
+  const query = `?reason=${encodeURIComponent(reason)}`;
+  return apiRequest(`/api/people/${personId}/location-events/${eventId}${query}`, {
     method: "DELETE",
   });
 }
