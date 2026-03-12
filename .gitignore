@@ -1,6 +1,7 @@
 ﻿# Python
 __pycache__/
 *.pyc
+.pytest_cache/
 .venv/
 backend/.venv/
 .vincent/
@@ -9,6 +10,8 @@ backend/.venv/
 frontend/node_modules/
 frontend/dist/
 
+# Runtime storage files
+backend/local_storage/
 
 
 # Secrets / local environment
