@@ -452,6 +452,37 @@ def test_daily_location_events_sheet_includes_full_name(tmp_path: Path) -> None:
     assert set(person_rows["full_name"].tolist()) == {full_name}
 
 
+def test_transitions_include_source_and_allow_deleting_bot_sourced_moves(tmp_path: Path) -> None:
+    """Computed transitions should expose source type and allow deleting bot-created move events."""
+    service = _build_service(tmp_path=tmp_path, seed_names=["Alice"])
+    today = date.today()
+    person_id = str(service.get_today_snapshot()["people"][0]["person_id"])
+
+    service.add_location_event_today(
+        person_id=person_id,
+        location="מיקום 1",
+        daily_status="תקין",
+        source="manual_ui",
+    )
+    second_payload = service.add_location_event_today(
+        person_id=person_id,
+        location="מיקום 2",
+        daily_status="לא תקין",
+        source="self_report_bot",
+    )
+    second_event_id = str(second_payload["last_action_event_id"])
+
+    transitions_payload = service.get_person_location_transitions(person_id, today)
+    assert len(transitions_payload["transitions"]) == 1
+    transition_row = transitions_payload["transitions"][0]
+    assert transition_row["transition_source"] == "bot"
+    assert transition_row["transition_source_raw"] == "self_report_bot"
+
+    service.delete_location_event_today(person_id=person_id, event_id=second_event_id)
+    transitions_after_delete = service.get_person_location_transitions(person_id, today)
+    assert transitions_after_delete["transitions"] == []
+
+
 def test_export_day_excel_contains_location_tracking_history(tmp_path: Path) -> None:
     """Day export workbook should include snapshot, events, and transitions sheets."""
     service = _build_service(tmp_path=tmp_path, seed_names=["Alice"])
@@ -501,6 +532,7 @@ def test_export_day_excel_contains_location_tracking_history(tmp_path: Path) -> 
     assert transition_row["full_name"] == "Alice"
     assert transition_row["from_location"] == "מיקום 1"
     assert transition_row["to_location"] == "מיקום 2"
+    assert transition_row["transition_source"] == "ui"
 
 
 def test_export_range_zip_contains_workbooks_with_tracking_sheet(tmp_path: Path) -> None:
@@ -530,4 +562,3 @@ def test_export_range_zip_contains_workbooks_with_tracking_sheet(tmp_path: Path)
         assert "snapshot" in today_workbook
         assert "location_events" in today_workbook
         assert "transitions" in today_workbook
-

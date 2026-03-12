@@ -187,6 +187,8 @@ class PersonTransitionRecord(BaseModel):
     dwell_minutes: int
     from_event_id: str
     to_event_id: str
+    transition_source: str
+    transition_source_raw: str
     date: date
 
 

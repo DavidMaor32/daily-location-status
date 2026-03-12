@@ -243,3 +243,33 @@ def test_location_events_api_add_delete_and_snapshot_sync(tmp_path: Path) -> Non
     reverted_person = next(item for item in snapshot_after_delete["people"] if item["person_id"] == person_id)
     assert reverted_person["location"] == default_location
     assert reverted_person["daily_status"] == default_status
+
+
+def test_transitions_api_includes_transition_source(tmp_path: Path) -> None:
+    """GET /api/people/{person_id}/transitions should expose transition source metadata."""
+    service, settings = _build_service(tmp_path=tmp_path, seed_names=["Alice"])
+    client = _build_test_client(service, settings)
+
+    today_payload = client.get("/api/snapshot/today").json()
+    person_id = today_payload["people"][0]["person_id"]
+    status_value = today_payload["people"][0]["daily_status"]
+    locations = service.get_locations()
+
+    first_create = client.post(
+        f"/api/people/{person_id}/location-events",
+        json={"location": locations[1], "daily_status": status_value},
+    )
+    assert first_create.status_code == 200
+
+    second_create = client.post(
+        f"/api/people/{person_id}/location-events",
+        json={"location": locations[2], "daily_status": status_value},
+    )
+    assert second_create.status_code == 200
+
+    transitions_response = client.get(f"/api/people/{person_id}/transitions")
+    assert transitions_response.status_code == 200
+    transitions = transitions_response.json()["transitions"]
+    assert len(transitions) == 1
+    assert transitions[0]["transition_source"] == "ui"
+    assert transitions[0]["transition_source_raw"] == "manual_ui"

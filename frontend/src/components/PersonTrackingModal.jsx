@@ -62,6 +62,16 @@ function formatEventType(eventType) {
   return "עדכון מיקום";
 }
 
+function formatTransitionSource(source) {
+  const normalized = String(source || "")
+    .trim()
+    .toLowerCase();
+  if (normalized === "bot") {
+    return "הזנה עצמית (בוט)";
+  }
+  return "UI";
+}
+
 function PersonTrackingModal({
   open,
   person,
@@ -240,7 +250,11 @@ function PersonTrackingModal({
                   </div>
                   <div className="tracking-event-details">
                     {transition ? (
-                      <small>{`מעבר: מ-${transition.from_location} ל-${transition.to_location}`}</small>
+                      <small>
+                        {`מעבר: מ-${transition.from_location} ל-${transition.to_location} | מקור: ${formatTransitionSource(
+                          transition.transition_source
+                        )}`}
+                      </small>
                     ) : item.event_type === "move" ? (
                       <small>תחילת רצף (אין מעבר קודם)</small>
                     ) : null}
@@ -271,6 +285,7 @@ function PersonTrackingModal({
                 <strong>{`מ-${item.from_location} ל-${item.to_location}`}</strong>
                 <span>{formatEventTimestamp(item.moved_at)}</span>
                 <span>{`שהייה: ${item.dwell_minutes} דקות`}</span>
+                <span>{`מקור מעבר: ${formatTransitionSource(item.transition_source)}`}</span>
               </div>
             ))
           )}

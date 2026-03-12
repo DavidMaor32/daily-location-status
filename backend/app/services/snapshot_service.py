@@ -82,6 +82,8 @@ TRANSITION_COLUMNS = [
     "dwell_minutes",
     "from_event_id",
     "to_event_id",
+    "transition_source",
+    "transition_source_raw",
     "date",
 ]
 DAILY_SNAPSHOT_SHEET = "snapshot"
@@ -1806,6 +1808,8 @@ class SnapshotService:
             "dwell_minutes": max(0, dwell_minutes),
             "from_event_id": str(row["from_event_id"]),
             "to_event_id": str(row["to_event_id"]),
+            "transition_source": self._normalize_transition_source(row.get("transition_source", "ui")),
+            "transition_source_raw": str(row.get("transition_source_raw", "")).strip() or DEFAULT_EVENT_SOURCE,
             "date": date.fromisoformat(str(row["date"])),
         }
 
@@ -1831,6 +1835,20 @@ class SnapshotService:
         """Normalize location-event type to known values."""
         cleaned = str(value).strip().lower() if value is not None else ""
         return cleaned if cleaned in VALID_EVENT_TYPES else "move"
+
+    def _normalize_transition_source(self, value: object) -> str:
+        """Map internal event source markers to one display category used by tracking UI."""
+        cleaned = str(value).strip().lower() if value is not None else ""
+        if not cleaned:
+            return "ui"
+        if (
+            "bot" in cleaned
+            or "telegram" in cleaned
+            or "self_report" in cleaned
+            or "self-report" in cleaned
+        ):
+            return "bot"
+        return "ui"
 
     def _parse_bool(self, value: object) -> bool:
         """Normalize mixed bool/string values from Excel into bool."""
@@ -2044,6 +2062,8 @@ class SnapshotService:
                 dwell_minutes = int(max(0, dwell_seconds) // 60)
                 to_event_id = str(current["event_id"])
                 transition_id = f"T-{to_event_id}"
+                transition_source_raw = str(current.get("source", "")).strip() or DEFAULT_EVENT_SOURCE
+                transition_source = self._normalize_transition_source(transition_source_raw)
 
                 transitions_rows.append(
                     {
@@ -2058,6 +2078,8 @@ class SnapshotService:
                         "dwell_minutes": dwell_minutes,
                         "from_event_id": str(previous["event_id"]),
                         "to_event_id": to_event_id,
+                        "transition_source": transition_source,
+                        "transition_source_raw": transition_source_raw,
                         "date": snapshot_date.isoformat(),
                     }
                 )
