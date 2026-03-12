@@ -78,6 +78,8 @@ TRANSITION_COLUMNS = [
     "to_event_id",
     "date",
 ]
+DAILY_SNAPSHOT_SHEET = "snapshot"
+DAILY_LOCATION_EVENTS_SHEET = "location_events"
 
 
 @dataclass(frozen=True)
@@ -133,6 +135,7 @@ class SnapshotService:
         self.ensure_master_people()
         self.ensure_locations_file()
         self.ensure_snapshot_for_date(date.today())
+        self.migrate_legacy_location_events()
 
     def get_today_snapshot(self) -> dict:
         """Return today's full snapshot, creating it when missing."""
@@ -161,25 +164,99 @@ class SnapshotService:
             }
 
     def delete_snapshot_for_date(self, snapshot_date: date) -> dict:
-        """Delete snapshot and tracking-event files for one date."""
+        """Delete one daily workbook and any leftover legacy events file for the same date."""
         with self._write_guard():
             snapshot_key = self._snapshot_key(snapshot_date)
-            events_key = self._location_events_key(snapshot_date)
+            legacy_events_key = self._legacy_location_events_key(snapshot_date)
 
             snapshot_exists = self.storage.exists(snapshot_key)
-            events_exists = self.storage.exists(events_key)
-            if not snapshot_exists and not events_exists:
+            legacy_events_exists = self.storage.exists(legacy_events_key)
+            if not snapshot_exists and not legacy_events_exists:
                 raise NotFoundError(f"Snapshot does not exist for date {snapshot_date.isoformat()}")
 
             snapshot_deleted = self.storage.delete(snapshot_key) if snapshot_exists else False
-            events_deleted = self.storage.delete(events_key) if events_exists else False
+            legacy_events_deleted = (
+                self.storage.delete(legacy_events_key) if legacy_events_exists else False
+            )
+            events_deleted = bool(snapshot_deleted or legacy_events_deleted)
 
             return {
                 "date": snapshot_date.isoformat(),
                 "snapshot_deleted": bool(snapshot_deleted),
                 "events_deleted": bool(events_deleted),
                 "snapshot_key": snapshot_key,
-                "events_key": events_key,
+                "events_key": f"{snapshot_key}#{DAILY_LOCATION_EVENTS_SHEET}",
+                "legacy_events_key": legacy_events_key,
+                "legacy_events_deleted": bool(legacy_events_deleted),
+            }
+
+    def migrate_legacy_location_events(self) -> dict:
+        """
+        Migrate legacy `<snapshots_prefix>_events/YYYY-MM-DD.xlsx` files into daily snapshot workbook sheets.
+
+        Legacy files are deleted only after successful merge into the same-day workbook.
+        """
+        with self._write_guard():
+            legacy_prefix = self._legacy_location_events_prefix()
+            legacy_keys = sorted(
+                key
+                for key in self.storage.list_keys(f"{legacy_prefix}/")
+                if key.lower().endswith(".xlsx")
+            )
+            if not legacy_keys:
+                return {"migrated_count": 0, "migrated_dates": [], "skipped_keys": []}
+
+            migrated_dates: list[str] = []
+            skipped_keys: list[str] = []
+
+            for legacy_key in legacy_keys:
+                filename = Path(legacy_key).name
+                date_part = filename.removesuffix(".xlsx")
+                try:
+                    snapshot_date = date.fromisoformat(date_part)
+                except ValueError:
+                    skipped_keys.append(legacy_key)
+                    logger.warning("Skipping legacy events file with invalid date format: %s", legacy_key)
+                    continue
+
+                snapshot_key = self._snapshot_key(snapshot_date)
+                if not self.storage.exists(snapshot_key):
+                    skipped_keys.append(legacy_key)
+                    logger.warning(
+                        "Skipping legacy events migration for %s because snapshot file is missing (%s)",
+                        snapshot_date.isoformat(),
+                        snapshot_key,
+                    )
+                    continue
+
+                snapshot_df = self.load_snapshot(snapshot_date, create_if_missing=False)
+                current_events_df = self._load_location_events_from_snapshot_sheet(snapshot_date)
+                legacy_events_df = self._normalize_location_events_df(
+                    self._read_excel(legacy_key),
+                    snapshot_date,
+                )
+
+                combined_events_df = pd.concat(
+                    [current_events_df, legacy_events_df],
+                    ignore_index=True,
+                )
+                combined_events_df = self._normalize_location_events_df(
+                    combined_events_df,
+                    snapshot_date,
+                )
+                self._write_daily_workbook(snapshot_date, snapshot_df, combined_events_df)
+                self.storage.delete(legacy_key)
+                migrated_dates.append(snapshot_date.isoformat())
+
+            if migrated_dates:
+                logger.info(
+                    "Migrated %s legacy events files into daily workbook format",
+                    len(migrated_dates),
+                )
+            return {
+                "migrated_count": len(migrated_dates),
+                "migrated_dates": migrated_dates,
+                "skipped_keys": skipped_keys,
             }
 
     def get_person_location_events(
@@ -798,7 +875,32 @@ class SnapshotService:
         with self._write_guard():
             snapshot_key = self._snapshot_key(snapshot_date)
             if self.storage.exists(snapshot_key):
-                return self.load_snapshot(snapshot_date, create_if_missing=False)
+                existing_snapshot_df, existing_events_df, _ = self._load_daily_workbook(snapshot_date)
+                if self._should_rebuild_empty_snapshot_from_master(
+                    existing_snapshot_df,
+                    existing_events_df,
+                ):
+                    master_df = self.ensure_master_people()
+                    if not master_df.empty:
+                        logger.warning(
+                            "Detected empty snapshot for %s with non-empty master; rebuilding from master",
+                            snapshot_date.isoformat(),
+                        )
+                        rebuilt_snapshot = self._build_snapshot_from_master(
+                            master_df,
+                            None,
+                            snapshot_date,
+                            carry_policy=SnapshotCarryPolicy(
+                                carry_location=False,
+                                carry_daily_status=False,
+                                carry_notes=False,
+                                carry_self_report=False,
+                            ),
+                        )
+                        self._write_daily_workbook(snapshot_date, rebuilt_snapshot, existing_events_df)
+                        self._delete_legacy_location_events_file(snapshot_date)
+                        return rebuilt_snapshot
+                return existing_snapshot_df
 
             master_df = self.ensure_master_people()
 
@@ -821,37 +923,53 @@ class SnapshotService:
 
     def load_snapshot(self, snapshot_date: date, create_if_missing: bool = False) -> pd.DataFrame:
         """Load and normalize one date snapshot from storage."""
+        if create_if_missing:
+            # Route through ensure flow so existing files can be auto-repaired when safe.
+            return self.ensure_snapshot_for_date(snapshot_date)
+
         snapshot_key = self._snapshot_key(snapshot_date)
         if not self.storage.exists(snapshot_key):
-            if create_if_missing:
-                return self.ensure_snapshot_for_date(snapshot_date)
             raise NotFoundError(f"Snapshot does not exist for date {snapshot_date.isoformat()}")
 
-        df = self._read_excel(snapshot_key)
-        return self._normalize_snapshot_df(df, snapshot_date)
+        snapshot_df, _, _ = self._load_daily_workbook(snapshot_date)
+        return snapshot_df
 
     def save_snapshot(self, snapshot_date: date, df: pd.DataFrame) -> None:
-        """Normalize and persist one date snapshot to storage."""
-        clean_df = self._normalize_snapshot_df(df, snapshot_date)
-        content = self._to_excel_bytes(clean_df)
+        """Normalize and persist one date snapshot, preserving same-day location-events sheet."""
+        clean_snapshot_df = self._normalize_snapshot_df(df, snapshot_date)
         with self._write_guard():
-            self.storage.write_bytes(self._snapshot_key(snapshot_date), content)
+            events_df = self.load_location_events(snapshot_date)
+            self._write_daily_workbook(snapshot_date, clean_snapshot_df, events_df)
+            self._delete_legacy_location_events_file(snapshot_date)
 
     def load_location_events(self, snapshot_date: date) -> pd.DataFrame:
-        """Load and normalize one date location-events file (returns empty when missing)."""
-        events_key = self._location_events_key(snapshot_date)
-        if not self.storage.exists(events_key):
-            return pd.DataFrame(columns=LOCATION_EVENT_COLUMNS)
+        """
+        Load and normalize one date location-events data.
 
-        df = self._read_excel(events_key)
-        return self._normalize_location_events_df(df, snapshot_date)
+        Primary source is the `location_events` sheet inside the same daily snapshot workbook.
+        For backward compatibility, legacy `<snapshots_prefix>_events/YYYY-MM-DD.xlsx` is used
+        only when snapshot workbook does not yet contain a `location_events` sheet.
+        """
+        snapshot_key = self._snapshot_key(snapshot_date)
+        if self.storage.exists(snapshot_key):
+            _, events_df, has_events_sheet = self._load_daily_workbook(snapshot_date)
+            if has_events_sheet:
+                return events_df
+
+        legacy_key = self._legacy_location_events_key(snapshot_date)
+        if self.storage.exists(legacy_key):
+            legacy_df = self._read_excel(legacy_key)
+            return self._normalize_location_events_df(legacy_df, snapshot_date)
+
+        return pd.DataFrame(columns=LOCATION_EVENT_COLUMNS)
 
     def save_location_events(self, snapshot_date: date, df: pd.DataFrame) -> None:
-        """Normalize and persist one date location-events file."""
-        clean_df = self._normalize_location_events_df(df, snapshot_date)
-        content = self._to_excel_bytes(clean_df)
+        """Normalize and persist one date location-events sheet inside daily snapshot workbook."""
+        clean_events_df = self._normalize_location_events_df(df, snapshot_date)
         with self._write_guard():
-            self.storage.write_bytes(self._location_events_key(snapshot_date), content)
+            snapshot_df = self.load_snapshot(snapshot_date, create_if_missing=True)
+            self._write_daily_workbook(snapshot_date, snapshot_df, clean_events_df)
+            self._delete_legacy_location_events_file(snapshot_date)
 
     def ensure_master_people(self) -> pd.DataFrame:
         """Ensure master people file exists; bootstrap from seed if missing."""
@@ -1176,6 +1294,22 @@ class SnapshotService:
             normalized_names.append(cleaned_name)
         return normalized_names
 
+    def _should_rebuild_empty_snapshot_from_master(
+        self,
+        snapshot_df: pd.DataFrame,
+        events_df: pd.DataFrame,
+    ) -> bool:
+        """
+        Decide whether an existing date snapshot should be repaired from master list.
+
+        Rebuild is considered safe only when both:
+        - snapshot has zero people rows
+        - there are no movement events for that date
+        """
+        if snapshot_df is None or not snapshot_df.empty:
+            return False
+        return events_df is None or events_df.empty
+
     def _normalize_name_key(self, name: object) -> str:
         """Normalize full-name text for case-insensitive comparisons."""
         return str(name).strip().lower()
@@ -1199,10 +1333,75 @@ class SnapshotService:
         prefix = self.settings.s3_snapshots_prefix.strip("/")
         return f"{prefix}/{snapshot_date.isoformat()}.xlsx"
 
-    def _location_events_key(self, snapshot_date: date) -> str:
-        """Build storage key for one date location-events file."""
+    def _legacy_location_events_prefix(self) -> str:
+        """Build legacy location-events folder prefix used by older versions."""
         prefix = self.settings.s3_snapshots_prefix.strip("/")
-        return f"{prefix}_events/{snapshot_date.isoformat()}.xlsx"
+        return f"{prefix}_events"
+
+    def _legacy_location_events_key(self, snapshot_date: date) -> str:
+        """Build storage key for one date legacy location-events workbook."""
+        return f"{self._legacy_location_events_prefix()}/{snapshot_date.isoformat()}.xlsx"
+
+    def _load_daily_workbook(self, snapshot_date: date) -> tuple[pd.DataFrame, pd.DataFrame, bool]:
+        """
+        Load one daily workbook and return normalized snapshot/events dataframes.
+
+        Returns:
+        - snapshot dataframe
+        - location-events dataframe
+        - bool flag indicating whether the workbook already has `location_events` sheet
+        """
+        snapshot_key = self._snapshot_key(snapshot_date)
+        workbook = self._read_excel_workbook(snapshot_key)
+
+        if DAILY_SNAPSHOT_SHEET in workbook:
+            snapshot_source_df = workbook[DAILY_SNAPSHOT_SHEET]
+        elif workbook:
+            # Backward compatibility for old single-sheet daily files.
+            snapshot_source_df = next(iter(workbook.values()))
+        else:
+            snapshot_source_df = pd.DataFrame(columns=SNAPSHOT_COLUMNS)
+
+        has_events_sheet = DAILY_LOCATION_EVENTS_SHEET in workbook
+        events_source_df = (
+            workbook[DAILY_LOCATION_EVENTS_SHEET]
+            if has_events_sheet
+            else pd.DataFrame(columns=LOCATION_EVENT_COLUMNS)
+        )
+
+        snapshot_df = self._normalize_snapshot_df(snapshot_source_df, snapshot_date)
+        events_df = self._normalize_location_events_df(events_source_df, snapshot_date)
+        return snapshot_df, events_df, has_events_sheet
+
+    def _load_location_events_from_snapshot_sheet(self, snapshot_date: date) -> pd.DataFrame:
+        """Load events only from snapshot workbook sheet (without legacy fallback)."""
+        snapshot_key = self._snapshot_key(snapshot_date)
+        if not self.storage.exists(snapshot_key):
+            return pd.DataFrame(columns=LOCATION_EVENT_COLUMNS)
+
+        _, events_df, has_events_sheet = self._load_daily_workbook(snapshot_date)
+        if not has_events_sheet:
+            return pd.DataFrame(columns=LOCATION_EVENT_COLUMNS)
+        return events_df
+
+    def _write_daily_workbook(
+        self,
+        snapshot_date: date,
+        snapshot_df: pd.DataFrame,
+        events_df: pd.DataFrame,
+    ) -> None:
+        """Persist snapshot + location-events into one daily workbook."""
+        clean_snapshot_df = self._normalize_snapshot_df(snapshot_df, snapshot_date)
+        clean_events_df = self._normalize_location_events_df(events_df, snapshot_date)
+        content = self._to_daily_workbook_bytes(clean_snapshot_df, clean_events_df)
+        self.storage.write_bytes(self._snapshot_key(snapshot_date), content)
+
+    def _delete_legacy_location_events_file(self, snapshot_date: date) -> bool:
+        """Delete one legacy events file when present (no-op when already absent)."""
+        legacy_key = self._legacy_location_events_key(snapshot_date)
+        if not self.storage.exists(legacy_key):
+            return False
+        return self.storage.delete(legacy_key)
 
     def _read_excel(self, key: str) -> pd.DataFrame:
         """Read Excel bytes from storage and convert to dataframe."""
@@ -1213,6 +1412,20 @@ class SnapshotService:
             raise
         except Exception as exc:  # noqa: BLE001
             raise StorageError(f"Failed to read excel file: {key}") from exc
+
+    def _read_excel_workbook(self, key: str) -> dict[str, pd.DataFrame]:
+        """Read an Excel workbook as sheet-name -> dataframe mapping."""
+        try:
+            content = self.storage.read_bytes(key)
+            parsed = pd.read_excel(BytesIO(content), sheet_name=None, dtype=str)
+            return {
+                str(sheet_name): sheet_df.fillna("")
+                for sheet_name, sheet_df in parsed.items()
+            }
+        except StorageError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise StorageError(f"Failed reading excel workbook: {key}") from exc
 
     def _read_seed_people_file(self, seed_path: Path) -> pd.DataFrame:
         """Read seed people file from disk (.xlsx/.xls/.xlsm/.csv)."""
@@ -1232,6 +1445,14 @@ class SnapshotService:
         buffer = BytesIO()
         with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
             df.to_excel(writer, index=False)
+        return buffer.getvalue()
+
+    def _to_daily_workbook_bytes(self, snapshot_df: pd.DataFrame, events_df: pd.DataFrame) -> bytes:
+        """Serialize one daily workbook with `snapshot` + `location_events` sheets."""
+        buffer = BytesIO()
+        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+            snapshot_df.to_excel(writer, index=False, sheet_name=DAILY_SNAPSHOT_SHEET)
+            events_df.to_excel(writer, index=False, sheet_name=DAILY_LOCATION_EVENTS_SHEET)
         return buffer.getvalue()
 
     def _build_export_excel_bytes(

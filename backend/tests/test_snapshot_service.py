@@ -172,26 +172,29 @@ def test_load_snapshot_create_if_missing_builds_missing_past_date(tmp_path: Path
     assert set(past_df["daily_status"].tolist()) == {DEFAULT_DAILY_STATUS}
 
 
-def test_delete_snapshot_for_date_removes_snapshot_and_events_files(tmp_path: Path) -> None:
-    """Deleting one date should remove snapshot and location-events files for that date."""
+def test_delete_snapshot_for_date_removes_daily_workbook_and_legacy_events_file(tmp_path: Path) -> None:
+    """Deleting one date should remove daily workbook and optional legacy events file for that date."""
     service = _build_service(tmp_path=tmp_path, seed_names=["Alice"])
     target_date = date.today() - timedelta(days=3)
     service.ensure_snapshot_for_date(target_date)
     service.save_location_events(target_date, pd.DataFrame())
 
     snapshot_key = f"{service.settings.s3_snapshots_prefix}/{target_date.isoformat()}.xlsx"
-    events_key = f"{service.settings.s3_snapshots_prefix}_events/{target_date.isoformat()}.xlsx"
+    legacy_events_key = f"{service.settings.s3_snapshots_prefix}_events/{target_date.isoformat()}.xlsx"
+    service.storage.write_bytes(legacy_events_key, b"legacy-events")
     assert service.storage.exists(snapshot_key)
-    assert service.storage.exists(events_key)
+    assert service.storage.exists(legacy_events_key)
 
     payload = service.delete_snapshot_for_date(target_date)
     assert payload["date"] == target_date.isoformat()
     assert payload["snapshot_deleted"] is True
     assert payload["events_deleted"] is True
     assert payload["snapshot_key"] == snapshot_key
-    assert payload["events_key"] == events_key
+    assert payload["events_key"] == f"{snapshot_key}#location_events"
+    assert payload["legacy_events_key"] == legacy_events_key
+    assert payload["legacy_events_deleted"] is True
     assert not service.storage.exists(snapshot_key)
-    assert not service.storage.exists(events_key)
+    assert not service.storage.exists(legacy_events_key)
     assert target_date not in service.list_available_dates()
 
     try:
@@ -199,6 +202,69 @@ def test_delete_snapshot_for_date_removes_snapshot_and_events_files(tmp_path: Pa
         assert False, "Expected NotFoundError for already deleted snapshot date"
     except NotFoundError:
         pass
+
+
+def test_migrate_legacy_events_moves_rows_into_snapshot_sheet(tmp_path: Path) -> None:
+    """Legacy snapshots_events file should be merged into same-day snapshot workbook sheet."""
+    service = _build_service(tmp_path=tmp_path, seed_names=["Alice"])
+    target_date = date.today() - timedelta(days=2)
+    target_df = service.ensure_snapshot_for_date(target_date)
+    person_id = str(target_df.iloc[0]["person_id"])
+
+    legacy_events_key = f"{service.settings.s3_snapshots_prefix}_events/{target_date.isoformat()}.xlsx"
+    legacy_df = pd.DataFrame(
+        [
+            {
+                "event_id": "E-legacy-1",
+                "person_id": person_id,
+                "event_type": "move",
+                "location": "מיקום 2",
+                "daily_status": "תקין",
+                "occurred_at": "2026-03-10T08:00:00",
+                "created_at": "2026-03-10T08:00:00",
+                "source": "legacy-test",
+                "date": target_date.isoformat(),
+            }
+        ]
+    )
+    service.storage.write_bytes(legacy_events_key, service._to_excel_bytes(legacy_df))
+    assert service.storage.exists(legacy_events_key)
+
+    result = service.migrate_legacy_location_events()
+    assert result["migrated_count"] >= 1
+    assert target_date.isoformat() in result["migrated_dates"]
+    assert not service.storage.exists(legacy_events_key)
+
+    migrated_events = service.load_location_events(target_date)
+    assert len(migrated_events.index) == 1
+    assert migrated_events.iloc[0]["person_id"] == person_id
+    assert migrated_events.iloc[0]["location"] == "מיקום 2"
+
+    snapshot_key = f"{service.settings.s3_snapshots_prefix}/{target_date.isoformat()}.xlsx"
+    workbook = pd.read_excel(BytesIO(service.storage.read_bytes(snapshot_key)), sheet_name=None, dtype=str)
+    assert "snapshot" in workbook
+    assert "location_events" in workbook
+
+
+def test_existing_empty_snapshot_is_rebuilt_from_master_when_create_if_missing(tmp_path: Path) -> None:
+    """Existing empty daily snapshot should be repaired from master when no events exist."""
+    service = _build_service(tmp_path=tmp_path, seed_names=["Alice", "Bob"])
+    target_date = date.today() + timedelta(days=2)
+    snapshot_key = f"{service.settings.s3_snapshots_prefix}/{target_date.isoformat()}.xlsx"
+
+    empty_snapshot_df = pd.DataFrame(columns=["person_id", "full_name"])
+    empty_events_df = pd.DataFrame(columns=["event_id", "person_id"])
+    service.storage.write_bytes(
+        snapshot_key,
+        service._to_daily_workbook_bytes(empty_snapshot_df, empty_events_df),
+    )
+
+    repaired = service.get_snapshot_for_date(target_date, create_if_missing=True)
+    repaired_names = sorted(item["full_name"] for item in repaired["people"])
+    assert repaired_names == ["Alice", "Bob"]
+
+    repaired_df = service.load_snapshot(target_date, create_if_missing=False)
+    assert sorted(repaired_df["full_name"].tolist()) == ["Alice", "Bob"]
 
 
 def test_update_self_report_rejects_too_long_location(tmp_path: Path) -> None:

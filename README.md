@@ -141,6 +141,10 @@ In local mode:
 - `backend/local_storage/master/locations.xlsx`
 - `backend/local_storage/snapshots/YYYY-MM-DD.xlsx`
 
+Each daily snapshot workbook contains sheets:
+- `snapshot` (current day state)
+- `location_events` (raw movement event log for that date)
+
 In S3 or dual mode:
 
 - Same logical keys are used under configured S3 prefix/bucket.

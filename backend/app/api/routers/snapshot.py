@@ -68,6 +68,6 @@ def delete_snapshot_file(
     _: None = Depends(require_write_access),
     service: SnapshotService = Depends(service_dep),
 ) -> dict:
-    """Delete one snapshot date file (and its tracking events file)."""
+    """Delete one date workbook (including location-events sheet and legacy leftovers)."""
     parsed_date = parse_date(snapshot_date)
     return service.delete_snapshot_for_date(parsed_date)

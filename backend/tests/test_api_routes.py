@@ -145,8 +145,8 @@ def test_manual_save_snapshot_endpoint(tmp_path: Path) -> None:
     assert payload["snapshot_key"].endswith(f"{target_date}.xlsx")
 
 
-def test_delete_snapshot_endpoint_removes_snapshot_and_events_files(tmp_path: Path) -> None:
-    """DELETE /api/snapshot/{date} should remove snapshot and events files for that date."""
+def test_delete_snapshot_endpoint_removes_daily_workbook_and_events_data(tmp_path: Path) -> None:
+    """DELETE /api/snapshot/{date} should remove daily workbook and location-events data."""
     service, settings = _build_service(tmp_path=tmp_path, seed_names=["Alice", "Bob"])
     client = _build_test_client(service, settings)
     target_day = date.today() - timedelta(days=2)
