@@ -20,7 +20,7 @@ frontend:
 storage:
   mode: "local" # Storage mode: local / s3 / local_and_s3 | Example: "local_and_s3"
 
-  local_storage_dir: "./local_storage" # Local Excel storage root path | Example: "./local_storage"
+  local_storage_dir: "./backend/local_storage" # Local Excel storage root path | Example: "./backend/local_storage"
 
   seed_people_file: "./backend/data/sample_people.xlsx" # Initial people Excel file (used only when master file does not exist) | Example: "./backend/data/sample_people.xlsx"
   snapshot_restore_policy: "exact_snapshot" # Restore policy: exact_snapshot / master_only

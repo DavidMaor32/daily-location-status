@@ -248,7 +248,7 @@ class Settings:
             ),
             local_storage_dir=_resolve_path(
                 _parse_optional_string(_yaml_get(config_data, "storage.local_storage_dir")),
-                BASE_DIR / "local_storage",
+                BASE_DIR / "backend" / "local_storage",
             ),
             seed_people_file=_resolve_path(
                 _parse_optional_string(_yaml_get(config_data, "storage.seed_people_file")),

@@ -69,7 +69,7 @@ Edit:
 Typical local values:
 
 - `storage.mode: "local"`
-- `storage.local_storage_dir: "./local_storage"`
+- `storage.local_storage_dir: "./backend/local_storage"`
 - `storage.seed_people_file: "./backend/data/sample_people.xlsx"`
 - `security.write_api_key: ""`
 - `frontend.api_base_url: ""`
@@ -137,9 +137,9 @@ powershell -ExecutionPolicy Bypass -File .\scripts\windows\start_production.ps1
 
 In local mode:
 
-- `local_storage/master/people_master.xlsx`
-- `local_storage/master/locations.xlsx`
-- `local_storage/snapshots/YYYY-MM-DD.xlsx`
+- `backend/local_storage/master/people_master.xlsx`
+- `backend/local_storage/master/locations.xlsx`
+- `backend/local_storage/snapshots/YYYY-MM-DD.xlsx`
 
 In S3 or dual mode:
 

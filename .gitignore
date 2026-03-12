@@ -9,8 +9,7 @@ backend/.venv/
 frontend/node_modules/
 frontend/dist/
 
-# Local storage files
-local_storage/
+
 
 # Secrets / local environment
 .env

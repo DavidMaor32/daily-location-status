@@ -54,7 +54,7 @@ storage.mode
 
 storage.local_storage_dir
 - Description: Local root folder for Excel files.
-- Example: "./local_storage"
+- Example: "./backend/local_storage"
 
 storage.seed_people_file
 - Description: Initial people seed file (prefer Excel), used only if master file does not yet exist.
@@ -144,7 +144,7 @@ Quick example: local-only mode
 ------------------------------
 storage:
   mode: "local"
-  local_storage_dir: "./local_storage"
+  local_storage_dir: "./backend/local_storage"
 
 frontend:
   api_base_url: ""
@@ -156,7 +156,7 @@ Quick example: dual write mode (local + S3)
 -------------------------------------------
 storage:
   mode: "local_and_s3"
-  local_storage_dir: "./local_storage"
+  local_storage_dir: "./backend/local_storage"
   s3:
     bucket_name: "my-status-bucket"
     snapshots_prefix: "snapshots"
