@@ -7,10 +7,10 @@ This guide runs the app on Windows using your local `nginx-1.28.2` folder.
 1. Python 3.9+
 2. Node.js 18+
 3. PowerShell
-4. Nginx extracted at:
-   `C:\Users\avish\OneDrive\Desktop\app\nginx-1.28.2`
+4. Nginx extracted inside project root (default):
+   `.\nginx-1.28.2`
 
-If your folder name is different (for example `ngin-1.28.2`), rename it or update the scripts.
+If your Nginx folder name or location is different, pass `-NginxDir` to the scripts.
 
 ## 2. Configuration
 
@@ -23,14 +23,7 @@ Example `.env`:
 
 ```env
 TELEGRAM_BOT_TOKEN=PUT_YOUR_TOKEN_HERE
-WRITE_API_KEY=PUT_STRONG_WRITE_KEY_HERE
 ```
-
-Optional write protection:
-
-1. Set `security.write_api_key` in `config/app_config.yaml`.
-2. If UI should perform write operations, also set matching `frontend.write_api_key`.
-3. If using API clients directly, send `X-API-Key` header.
 
 ## 3. What was added
 
@@ -52,6 +45,7 @@ Windows production scripts were added:
 3. `scripts/windows/stop_production.ps1`
    - Stops backend process for this app.
    - Sends graceful `quit` to Nginx.
+   - Supports custom Nginx folder via `-NginxDir`.
 
 ## 4. First run
 
@@ -67,6 +61,12 @@ This runs install + build + backend + nginx.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\windows\start_production.ps1 -SkipInstall -SkipBuild
+```
+
+If Nginx is in a custom location:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\start_production.ps1 -NginxDir "D:\tools\nginx-1.28.2"
 ```
 
 ## 6. Stop all
@@ -148,8 +148,8 @@ Run this exact reset sequence from project root:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\windows\stop_production.ps1 -BackendPort 8000
-powershell -ExecutionPolicy Bypass -File .\scripts\windows\configure_nginx.ps1 -NginxPort 80 -BackendPort 8000
-powershell -ExecutionPolicy Bypass -File .\scripts\windows\start_production.ps1 -SkipInstall -SkipBuild -BackendPort 8000 -NginxPort 80
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\configure_nginx.ps1 -NginxPort 80 -BackendPort 8000 -NginxDir ".\nginx-1.28.2"
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\start_production.ps1 -SkipInstall -SkipBuild -BackendPort 8000 -NginxPort 80 -NginxDir ".\nginx-1.28.2"
 ```
 
 Then open:

@@ -1,8 +1,10 @@
+"""Snapshot/history API routes for loading, saving, restoring, and deleting dates."""
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from app.api.dependencies import parse_date, require_write_access, service_dep
+from app.api.dependencies import parse_date, service_dep
 from app.models import AvailableDatesResponse, SnapshotResponse
 from app.services.snapshot_service import SnapshotService
 
@@ -43,7 +45,6 @@ def get_available_dates(service: SnapshotService = Depends(service_dep)) -> Avai
 @router.post("/api/snapshot/{snapshot_date}/save")
 def save_snapshot_file(
     snapshot_date: str,
-    _: None = Depends(require_write_access),
     service: SnapshotService = Depends(service_dep),
 ) -> dict:
     """Force-save snapshot file for selected date (explicit manual save action)."""
@@ -54,7 +55,6 @@ def save_snapshot_file(
 @router.post("/api/history/{snapshot_date}/restore-to-today", response_model=SnapshotResponse)
 def restore_history_to_today(
     snapshot_date: str,
-    _: None = Depends(require_write_access),
     service: SnapshotService = Depends(service_dep),
 ) -> SnapshotResponse:
     """Restore one historical date into today's snapshot."""
@@ -65,7 +65,6 @@ def restore_history_to_today(
 @router.delete("/api/snapshot/{snapshot_date}")
 def delete_snapshot_file(
     snapshot_date: str,
-    _: None = Depends(require_write_access),
     service: SnapshotService = Depends(service_dep),
 ) -> dict:
     """Delete one date workbook (including location-events sheet and legacy leftovers)."""

@@ -1,11 +1,28 @@
 param(
-    [int]$BackendPort = 8000
+    [int]$BackendPort = 8000,
+    [string]$NginxDir = ""
 )
 
 $ErrorActionPreference = "Stop"
 
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
-$nginxDir = Join-Path $projectRoot "nginx-1.28.2"
+$resolvedNginxDir = if ([string]::IsNullOrWhiteSpace($NginxDir)) {
+    Join-Path $projectRoot "nginx-1.28.2"
+}
+else {
+    if ([System.IO.Path]::IsPathRooted($NginxDir)) {
+        $NginxDir
+    }
+    else {
+        Join-Path $projectRoot $NginxDir
+    }
+}
+$nginxDir = if (Test-Path $resolvedNginxDir) {
+    (Resolve-Path $resolvedNginxDir).Path
+}
+else {
+    $resolvedNginxDir
+}
 $nginxExe = Join-Path $nginxDir "nginx.exe"
 
 # Stop backend uvicorn process started for this app/port.

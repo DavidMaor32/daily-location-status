@@ -1,7 +1,10 @@
+"""Application entrypoint: FastAPI app wiring, startup lifecycle, and runtime status endpoints."""
+
 from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
+from datetime import date, datetime, timezone
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,37 +27,57 @@ telegram_bot_service: TelegramBotService | None = None
 startup_error: str | None = None
 
 
+def _build_server_clock_payload() -> dict:
+    """Return server clock fields used by status endpoints."""
+    return {
+        "server_date": date.today(),
+        "server_time_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+    }
+
+
+def _build_telegram_boot_status() -> dict:
+    """Return Telegram status when worker is not running yet."""
+    settings = get_settings()
+    configured = bool((settings.telegram_bot_token or "").strip())
+    enabled = settings.telegram_bot_enabled
+
+    if not enabled:
+        message = "בוט טלגרם לא פעיל"
+    elif not configured:
+        message = "בוט טלגרם לא מוגדר (חסר token)"
+    else:
+        message = "בוט טלגרם מחובר"
+
+    return {
+        "telegram_enabled": enabled,
+        "telegram_configured": configured,
+        "telegram_running": False,
+        "telegram_healthy": False,
+        "telegram_active": False,
+        "telegram_message": message,
+        "telegram_last_error": None,
+    }
+
+
 def get_system_status() -> dict:
     """Return backend runtime status payload for UI and operations dashboards."""
+    server_payload = _build_server_clock_payload()
+
     if telegram_bot_service is None:
-        settings = get_settings()
-        configured = bool((settings.telegram_bot_token or "").strip())
-        enabled = settings.telegram_bot_enabled
-        if not enabled:
-            message = "בוט טלגרם לא פעיל"
-        elif not configured:
-            message = "בוט טלגרם לא פעיל (חסר token)"
-        else:
-            message = "בוט טלגרם באתחול"
-        return {
-            "telegram_enabled": enabled,
-            "telegram_configured": configured,
-            "telegram_running": False,
-            "telegram_healthy": False,
-            "telegram_active": False,
-            "telegram_message": message,
-            "telegram_last_error": None,
-        }
-    return telegram_bot_service.get_runtime_status()
+        return {**server_payload, **_build_telegram_boot_status()}
+
+    return {**server_payload, **telegram_bot_service.get_runtime_status()}
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    """Initialize today's snapshot during application startup."""
+    """Initialize storage snapshot state and optional Telegram worker on startup."""
     global telegram_bot_service, startup_error
+
     service = get_snapshot_service()
     settings = get_settings()
     startup_error = None
+
     logger.info("Using startup config file: %s", settings.config_file_path)
     logger.info(
         "Runtime storage mode=%s local_storage_dir=%s snapshots_prefix=%s s3_bucket=%s",
@@ -63,6 +86,7 @@ async def lifespan(_: FastAPI):
         settings.s3_snapshots_prefix,
         settings.s3_bucket_name or "-",
     )
+
     try:
         service.initialize_today_snapshot()
         logger.info("Today's snapshot initialized successfully")
@@ -75,6 +99,7 @@ async def lifespan(_: FastAPI):
     else:
         telegram_bot_service = TelegramBotService(settings=settings, snapshot_service=service)
         telegram_bot_service.start()
+
     try:
         yield
     finally:

@@ -261,6 +261,8 @@ class LocationListResponse(BaseModel):
 class SystemStatusResponse(BaseModel):
     """Response model for backend runtime integrations status."""
 
+    server_date: date
+    server_time_utc: str
     telegram_enabled: bool
     telegram_configured: bool
     telegram_running: bool

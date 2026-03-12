@@ -1,14 +1,29 @@
 param(
     [int]$NginxPort = 80,
     [string]$BackendHost = "127.0.0.1",
-    [int]$BackendPort = 8000
+    [int]$BackendPort = 8000,
+    [string]$NginxDir = ""
 )
 
 $ErrorActionPreference = "Stop"
 
 # Resolve project paths from script location.
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
-$nginxDir = Join-Path $projectRoot "nginx-1.28.2"
+$resolvedNginxDir = if ([string]::IsNullOrWhiteSpace($NginxDir)) {
+    Join-Path $projectRoot "nginx-1.28.2"
+}
+else {
+    if ([System.IO.Path]::IsPathRooted($NginxDir)) {
+        $NginxDir
+    }
+    else {
+        Join-Path $projectRoot $NginxDir
+    }
+}
+if (!(Test-Path $resolvedNginxDir)) {
+    throw "Nginx directory was not found: $resolvedNginxDir"
+}
+$nginxDir = (Resolve-Path $resolvedNginxDir).Path
 $nginxExe = Join-Path $nginxDir "nginx.exe"
 $nginxConfPath = Join-Path $nginxDir "conf\nginx.conf"
 $frontendDist = Join-Path $projectRoot "frontend\dist"

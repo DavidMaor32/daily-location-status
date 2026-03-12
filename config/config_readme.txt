@@ -4,7 +4,7 @@ CONFIG README
 Purpose
 -------
 `app_config.yaml` defines all non-secret runtime settings.
-Use `.env` for secrets (for example: Telegram bot token, write API key).
+Use `.env` for secrets (for example: Telegram bot token).
 
 Configuration file path:
   ./config/app_config.yaml
@@ -37,12 +37,6 @@ frontend.dev_server_port
 frontend.dev_proxy_target
 - Description: Target URL used by Vite to proxy `/api` requests in development.
 - Example: "http://localhost:8000"
-
-frontend.write_api_key
-- Description: Optional key injected into frontend build and sent as `X-API-Key` on write requests.
-- Use case: internal deployments where browser should call protected write endpoints.
-- Warning: this value is visible in browser bundles; do not treat it as strong internet-facing security.
-- Example: "change-me-strong-key"
 
 storage.mode
 - Description: Excel storage mode.
@@ -99,15 +93,6 @@ aws.session_token
 aws.region
 - Description: AWS region for S3 calls.
 - Example: "us-east-1"
-
-security.write_api_key
-- Description: Optional API key that protects mutating HTTP endpoints.
-- Header name: `X-API-Key`
-- Behavior:
-  - Empty value: write endpoints stay open.
-  - Non-empty value: POST/PATCH/PUT/DELETE write endpoints require matching key.
-- Recommendation: keep empty in YAML and set `WRITE_API_KEY` in `.env`.
-- Example: "change-me-strong-key"
 
 telegram.enabled
 - Description: Enable/disable Telegram bot integration.

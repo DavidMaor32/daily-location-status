@@ -5,7 +5,11 @@ import path from "node:path";
 import yaml from "js-yaml";
 
 const PROJECT_ROOT = path.resolve(__dirname, "..");
-const APP_CONFIG_PATH = path.resolve(PROJECT_ROOT, "config", "app_config.yaml");
+const DEFAULT_APP_CONFIG_PATH = path.resolve(PROJECT_ROOT, "config", "app_config.yaml");
+const APP_CONFIG_PATH = path.resolve(
+  PROJECT_ROOT,
+  process.env.APP_CONFIG_PATH || DEFAULT_APP_CONFIG_PATH
+);
 
 function loadYamlConfig() {
   if (!fs.existsSync(APP_CONFIG_PATH)) {
@@ -19,16 +23,18 @@ function loadYamlConfig() {
 
 const appConfig = loadYamlConfig();
 const frontendConfig = appConfig.frontend || {};
-const frontendApiBaseUrl = String(frontendConfig.api_base_url || "");
-const frontendDevPort = Number(frontendConfig.dev_server_port || 5173);
-const frontendDevProxyTarget = String(frontendConfig.dev_proxy_target || "http://localhost:8000");
-const frontendWriteApiKey = String(frontendConfig.write_api_key || "");
+const frontendApiBaseUrl = String(
+  process.env.FRONTEND_API_BASE_URL || frontendConfig.api_base_url || ""
+);
+const frontendDevPort = Number(process.env.FRONTEND_DEV_SERVER_PORT || frontendConfig.dev_server_port || 5173);
+const frontendDevProxyTarget = String(
+  process.env.FRONTEND_DEV_PROXY_TARGET || frontendConfig.dev_proxy_target || "http://localhost:8000"
+);
 
 export default defineConfig({
   plugins: [react()],
   define: {
     __API_BASE_URL__: JSON.stringify(frontendApiBaseUrl),
-    __WRITE_API_KEY__: JSON.stringify(frontendWriteApiKey),
   },
   server: {
     port: frontendDevPort,

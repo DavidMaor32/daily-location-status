@@ -1,3 +1,5 @@
+// Modal component for per-person location event tracking and undo workflow.
+
 import { useEffect, useMemo, useState } from "react";
 import { getLocationChipClass } from "../constants/locations";
 import {
@@ -122,7 +124,7 @@ function PersonTrackingModal({
         className="modal tracking-modal"
         onClick={(event) => event.stopPropagation()}
       >
-        <h3>{`מעקב מיקומים - ${person.full_name}`}</h3>
+        <h3>{`מעקב מיקומי - ${person.full_name}`}</h3>
 
         {latestTransitionWarning ? (
           <div className="tracking-warning">{latestTransitionWarning}</div>
@@ -193,7 +195,7 @@ function PersonTrackingModal({
                 disabled={loading || !canUndo}
                 onClick={onUndoLastAction}
               >
-                {canUndo ? `Undo (${undoSecondsLeft})` : "Undo"}
+                {canUndo ? `בטל (${undoSecondsLeft})` : "בטל"}
               </button>
             </div>
           </form>
@@ -206,7 +208,7 @@ function PersonTrackingModal({
         <div className="tracking-events-list">
           <h4>אירועים</h4>
           {safeEvents.length === 0 ? (
-            <div className="muted-text">אין אירועי מיקום לאדם זה בתאריך שנבחר.</div>
+            <div className="muted-text">אין אירועי מיקום למזהה זה בתאריך שנבחר.</div>
           ) : (
             safeEvents.map((item) => {
               const transition = transitionByToEventId.get(String(item.event_id));
@@ -240,9 +242,9 @@ function PersonTrackingModal({
                     {transition ? (
                       <small>{`מעבר: מ-${transition.from_location} ל-${transition.to_location}`}</small>
                     ) : item.event_type === "move" ? (
-                      <small>תחילת רצף (ללא מעבר קודם)</small>
+                      <small>תחילת רצף (אין מעבר קודם)</small>
                     ) : null}
-                    <small>{`Event ID: ${item.event_id}`}</small>
+                    <small>{`מזהה אירוע: ${item.event_id}`}</small>
                   </div>
                   {!readOnly && item.event_type === "move" && !item.is_voided ? (
                     <button

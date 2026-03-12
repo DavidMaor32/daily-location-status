@@ -15,7 +15,6 @@ frontend:
   api_base_url: "" # Browser API base URL (empty = use relative /api) | Example: ""
   dev_server_port: 5173 # Frontend dev server port (Vite) | Example: 5173
   dev_proxy_target: "http://localhost:8000" # Vite proxy target for /api in development | Example: "http://localhost:8000"
-  write_api_key: "" # Optional key sent by frontend in X-API-Key for write calls | Example: "change-me-strong-key"
 
 storage:
   mode: "local" # Storage mode: local / s3 / local_and_s3 | Example: "local_and_s3"
@@ -35,9 +34,6 @@ aws:
   secret_access_key: "" # AWS Secret Access Key | Example: "xxxxxxxxxxxx"
   session_token: "" # Temporary AWS session token (optional) | Example: "IQoJb3Jp..."
   region: "us-east-1" # AWS region for S3 operations | Example: "us-east-1"
-
-security:
-  write_api_key: "" # Optional API key for write endpoints; if empty, write endpoints stay open | Example: "change-me-strong-key"
 
 telegram:
   enabled: true # Enable/disable Telegram bot integration | Example: true

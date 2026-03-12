@@ -1,6 +1,7 @@
+// Frontend API client: centralizes HTTP calls, endpoints, and date helpers.
+
 // Value is injected by Vite from config/app_config.yaml (frontend.api_base_url).
 const API_BASE_URL = __API_BASE_URL__ || "";
-const WRITE_API_KEY = __WRITE_API_KEY__ || "";
 
 function buildApiUrl(path) {
   return `${API_BASE_URL}${path}`;
@@ -8,14 +9,9 @@ function buildApiUrl(path) {
 
 // Generic JSON request helper with centralized error handling.
 async function apiRequest(path, options = {}) {
-  const method = String(options.method || "GET").toUpperCase();
-  const isWriteMethod = ["POST", "PUT", "PATCH", "DELETE"].includes(method);
-  const authHeader = isWriteMethod && WRITE_API_KEY ? { "X-API-Key": WRITE_API_KEY } : {};
-
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
       "Content-Type": "application/json",
-      ...authHeader,
       ...(options.headers || {}),
     },
     ...options,
@@ -23,10 +19,11 @@ async function apiRequest(path, options = {}) {
 
   if (!response.ok) {
     const errorBody = await response.json().catch(() => ({}));
-    throw new Error(errorBody.detail || "השרת החזיר שגיאה לא צפויה");
+    throw new Error(errorBody.detail || "שגיאה בתקשורת עם השרת");
   }
 
-  return response.json();
+  const text = await response.text();
+  return text ? JSON.parse(text) : {};
 }
 
 // Load today's snapshot from backend.

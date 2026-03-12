@@ -21,7 +21,9 @@ async function setupMockApi(page) {
     todayDate,
     historyDate,
     personId,
+    trackedLocation,
     deleteSnapshotCalls: 0,
+    deleteLocationCalls: 0,
     addEventCalls: 0,
     undoCalls: 0,
     events: [],
@@ -67,9 +69,12 @@ async function setupMockApi(page) {
     await dialog.accept();
   });
 
-  await page.route("**/api/**", async (route, request) => {
+  await page.route("**/*", async (route, request) => {
     const url = new URL(request.url());
     const path = url.pathname;
+    if (!path.startsWith("/api/")) {
+      return route.continue();
+    }
     const method = request.method().toUpperCase();
 
     if (method === "GET" && path === "/api/snapshot/today") {
@@ -82,6 +87,12 @@ async function setupMockApi(page) {
       });
     }
     if (method === "GET" && path === "/api/locations") {
+      return route.fulfill({ status: 200, json: { locations: state.locations } });
+    }
+    if (method === "DELETE" && path.startsWith("/api/locations/")) {
+      state.deleteLocationCalls += 1;
+      const locationName = decodeURIComponent(path.replace("/api/locations/", ""));
+      state.locations = state.locations.filter((item) => item !== locationName);
       return route.fulfill({ status: 200, json: { locations: state.locations } });
     }
     if (method === "GET" && path === "/api/system/status") {
@@ -249,4 +260,26 @@ test("adds tracking event and undoes it from tracking modal", async ({ page }) =
   await page.getByTestId("tracking-undo-button").click();
   await expect(page.getByTestId("tracking-undo-button")).toBeDisabled();
   expect(state.undoCalls).toBe(1);
+});
+
+test("deleting location removes it from selectable location options", async ({ page }) => {
+  const state = await setupMockApi(page);
+  await page.goto("/");
+
+  const quickLocationButton = page
+    .locator(".quick-actions .btn")
+    .filter({ hasText: state.trackedLocation });
+  await expect(quickLocationButton.first()).toBeVisible();
+
+  await page.locator(".location-remove-row select").selectOption(state.trackedLocation);
+  await page.locator(".location-remove-row .btn.btn-danger").click();
+
+  await expect(quickLocationButton).toHaveCount(0);
+  await expect(
+    page
+      .locator(".compact-filter-group select")
+      .first()
+      .locator(`option[value="${state.trackedLocation}"]`)
+  ).toHaveCount(0);
+  expect(state.deleteLocationCalls).toBe(1);
 });

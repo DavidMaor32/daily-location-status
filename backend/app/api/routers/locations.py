@@ -1,8 +1,10 @@
+"""Location catalog API routes for listing, creating, and deleting locations."""
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from app.api.dependencies import require_write_access, service_dep
+from app.api.dependencies import service_dep
 from app.models import LocationCreate, LocationListResponse
 from app.services.snapshot_service import SnapshotService
 
@@ -19,7 +21,6 @@ def get_locations(service: SnapshotService = Depends(service_dep)) -> LocationLi
 @router.post("/api/locations", response_model=LocationListResponse)
 def create_location(
     payload: LocationCreate,
-    _: None = Depends(require_write_access),
     service: SnapshotService = Depends(service_dep),
 ) -> LocationListResponse:
     """Create location option and return updated location list."""
@@ -29,7 +30,6 @@ def create_location(
 @router.delete("/api/locations/{location_name}", response_model=LocationListResponse)
 def remove_location(
     location_name: str,
-    _: None = Depends(require_write_access),
     service: SnapshotService = Depends(service_dep),
 ) -> LocationListResponse:
     """Delete one location option and return updated location list."""

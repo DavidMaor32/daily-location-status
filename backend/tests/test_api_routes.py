@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from datetime import date, timedelta
 from pathlib import Path
@@ -23,8 +23,6 @@ from app.storage.providers import LocalStorageProvider
 def _build_settings(
     tmp_path: Path,
     seed_file: Path,
-    *,
-    write_api_key: str | None = None,
 ) -> Settings:
     """Build Settings for API integration tests."""
     return Settings(
@@ -44,7 +42,6 @@ def _build_settings(
         local_storage_dir=tmp_path / "storage",
         seed_people_file=seed_file,
         cors_origins=["http://localhost:5173"],
-        write_api_key=write_api_key,
         telegram_bot_enabled=False,
         telegram_bot_token=None,
         telegram_allowed_chat_ids=[],
@@ -58,7 +55,6 @@ def _build_service(
     tmp_path: Path,
     *,
     seed_names: list[str],
-    write_api_key: str | None = None,
 ) -> tuple[SnapshotService, Settings]:
     """Create snapshot service backed by temporary local storage."""
     seed_file = tmp_path / "seed_people.xlsx"
@@ -66,7 +62,6 @@ def _build_service(
     settings = _build_settings(
         tmp_path=tmp_path,
         seed_file=seed_file,
-        write_api_key=write_api_key,
     )
     storage = LocalStorageProvider(settings.local_storage_dir)
     service = SnapshotService(settings=settings, storage=storage)
@@ -126,7 +121,7 @@ def test_patch_person_rejects_unknown_location(tmp_path: Path) -> None:
     today_payload = client.get("/api/snapshot/today").json()
     person_id = today_payload["people"][0]["person_id"]
 
-    response = client.patch(f"/api/people/{person_id}", json={"location": "מיקום לא קיים"})
+    response = client.patch(f"/api/people/{person_id}", json={"location": "׳׳™׳§׳•׳ ׳׳ ׳§׳™׳™׳"})
     assert response.status_code == 400
     assert "configured locations" in response.json()["detail"]
 
@@ -167,101 +162,9 @@ def test_delete_snapshot_endpoint_removes_daily_workbook_and_events_data(tmp_pat
     assert missing_again.status_code == 404
 
 
-def test_write_endpoints_require_api_key_when_configured(tmp_path: Path) -> None:
-    """When write_api_key is configured, mutating endpoints must validate X-API-Key."""
-    service, settings = _build_service(
-        tmp_path=tmp_path,
-        seed_names=["Alice"],
-        write_api_key="super-secret",
-    )
-    client = _build_test_client(service, settings)
-
-    new_location = "Location 6"
-    tracking_location = service.get_locations()[1]
-
-    missing_header_response = client.post("/api/locations", json={"location": new_location})
-    assert missing_header_response.status_code == 401
-
-    bad_header_response = client.post(
-        "/api/locations",
-        json={"location": new_location},
-        headers={"X-API-Key": "wrong-key"},
-    )
-    assert bad_header_response.status_code == 403
-
-    good_header_response = client.post(
-        "/api/locations",
-        json={"location": new_location},
-        headers={"X-API-Key": "super-secret"},
-    )
-    assert good_header_response.status_code == 200
-    assert new_location in good_header_response.json()["locations"]
-
-    today_payload = client.get("/api/snapshot/today").json()
-    person_id = today_payload["people"][0]["person_id"]
-
-    tracking_missing_key_response = client.post(
-        f"/api/people/{person_id}/location-events",
-        json={"location": tracking_location},
-    )
-    assert tracking_missing_key_response.status_code == 401
-
-    tracking_bad_key_response = client.post(
-        f"/api/people/{person_id}/location-events",
-        json={"location": tracking_location},
-        headers={"X-API-Key": "wrong-key"},
-    )
-    assert tracking_bad_key_response.status_code == 403
-
-    tracking_good_key_response = client.post(
-        f"/api/people/{person_id}/location-events",
-        json={"location": tracking_location},
-        headers={"X-API-Key": "super-secret"},
-    )
-    assert tracking_good_key_response.status_code == 200
-
-    target_date = date.today().isoformat()
-    save_missing_key_response = client.post(f"/api/snapshot/{target_date}/save")
-    assert save_missing_key_response.status_code == 401
-
-    save_bad_key_response = client.post(
-        f"/api/snapshot/{target_date}/save",
-        headers={"X-API-Key": "wrong-key"},
-    )
-    assert save_bad_key_response.status_code == 403
-
-    save_good_key_response = client.post(
-        f"/api/snapshot/{target_date}/save",
-        headers={"X-API-Key": "super-secret"},
-    )
-    assert save_good_key_response.status_code == 200
-
-    delete_target_day = date.today() - timedelta(days=1)
-    delete_target = delete_target_day.isoformat()
-    service.ensure_snapshot_for_date(delete_target_day)
-
-    delete_missing_key_response = client.delete(f"/api/snapshot/{delete_target}")
-    assert delete_missing_key_response.status_code == 401
-
-    delete_bad_key_response = client.delete(
-        f"/api/snapshot/{delete_target}",
-        headers={"X-API-Key": "wrong-key"},
-    )
-    assert delete_bad_key_response.status_code == 403
-
-    delete_good_key_response = client.delete(
-        f"/api/snapshot/{delete_target}",
-        headers={"X-API-Key": "super-secret"},
-    )
-    assert delete_good_key_response.status_code == 200
-
-def test_read_endpoints_are_open_even_when_write_api_key_is_configured(tmp_path: Path) -> None:
-    """Read endpoints should remain open without API key even in protected write mode."""
-    service, settings = _build_service(
-        tmp_path=tmp_path,
-        seed_names=["Alice"],
-        write_api_key="super-secret",
-    )
+def test_read_endpoints_are_open(tmp_path: Path) -> None:
+    """Read endpoints should remain accessible without authentication headers."""
+    service, settings = _build_service(tmp_path=tmp_path, seed_names=["Alice"])
     client = _build_test_client(service, settings)
 
     response = client.get("/api/locations")
@@ -335,4 +238,3 @@ def test_location_events_api_add_delete_and_snapshot_sync(tmp_path: Path) -> Non
     reverted_person = next(item for item in snapshot_after_delete["people"] if item["person_id"] == person_id)
     assert reverted_person["location"] == default_location
     assert reverted_person["daily_status"] == default_status
-

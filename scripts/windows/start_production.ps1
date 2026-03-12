@@ -1,6 +1,7 @@
 param(
     [int]$BackendPort = 8000,
     [int]$NginxPort = 80,
+    [string]$NginxDir = "",
     [switch]$SkipInstall,
     [switch]$SkipBuild
 )
@@ -10,7 +11,21 @@ $ErrorActionPreference = "Stop"
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $backendDir = Join-Path $projectRoot "backend"
 $frontendDir = Join-Path $projectRoot "frontend"
-$nginxDir = Join-Path $projectRoot "nginx-1.28.2"
+$resolvedNginxDir = if ([string]::IsNullOrWhiteSpace($NginxDir)) {
+    Join-Path $projectRoot "nginx-1.28.2"
+}
+else {
+    if ([System.IO.Path]::IsPathRooted($NginxDir)) {
+        $NginxDir
+    }
+    else {
+        Join-Path $projectRoot $NginxDir
+    }
+}
+if (!(Test-Path $resolvedNginxDir)) {
+    throw "Nginx directory was not found: $resolvedNginxDir"
+}
+$nginxDir = (Resolve-Path $resolvedNginxDir).Path
 $nginxExe = Join-Path $nginxDir "nginx.exe"
 
 if (!(Test-Path $nginxExe)) {
@@ -52,6 +67,7 @@ if (-not $SkipBuild) {
 Write-Host "Generating and validating nginx config..."
 & (Join-Path $projectRoot "scripts\windows\configure_nginx.ps1") `
     -NginxPort $NginxPort `
+    -NginxDir $nginxDir `
     -BackendHost "127.0.0.1" `
     -BackendPort $BackendPort
 
@@ -110,4 +126,8 @@ Write-Host "  Frontend + API proxy: http://localhost:$NginxPort"
 Write-Host "  Backend direct:        http://127.0.0.1:$BackendPort/api/health"
 Write-Host ""
 Write-Host "Stop command:"
-Write-Host "  powershell -ExecutionPolicy Bypass -File .\scripts\windows\stop_production.ps1 -BackendPort $BackendPort"
+$stopCommand = "powershell -ExecutionPolicy Bypass -File .\scripts\windows\stop_production.ps1 -BackendPort $BackendPort"
+if (-not [string]::IsNullOrWhiteSpace($NginxDir)) {
+    $stopCommand += " -NginxDir `"$nginxDir`""
+}
+Write-Host "  $stopCommand"

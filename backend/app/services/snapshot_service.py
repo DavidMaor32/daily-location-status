@@ -64,7 +64,6 @@ MAX_LOCATION_LENGTH = 80
 DEFAULT_LOCATION_OPTIONS = ["בבית", "מיקום 1", "מיקום 2", "מיקום 3", "מיקום 4", "מיקום 5"]
 DEFAULT_EVENT_SOURCE = "manual"
 VALID_EVENT_TYPES = {"move", "correction", "undo"}
-VALID_VOID_REASONS = {"correction", "undo"}
 SUSPICIOUS_TRANSITION_SECONDS = 120
 TRANSITION_COLUMNS = [
     "transition_id",

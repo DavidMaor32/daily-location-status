@@ -1,3 +1,5 @@
+"""Runtime configuration loader for YAML/.env settings and typed Settings object."""
+
 from __future__ import annotations
 
 import logging
@@ -42,6 +44,11 @@ def _load_local_env_file(env_path: Path | None = None) -> None:
             value = value[1:-1]
 
         os.environ.setdefault(key, value)
+
+
+def _resolve_config_path() -> Path:
+    """Resolve YAML config path with optional APP_CONFIG_PATH override."""
+    return _resolve_path(os.getenv("APP_CONFIG_PATH"), DEFAULT_APP_CONFIG_PATH)
 
 
 def _resolve_path(raw_value: str | None, default_path: Path) -> Path:
@@ -196,7 +203,6 @@ class Settings:
     local_storage_dir: Path
     seed_people_file: Path
     cors_origins: list[str]
-    write_api_key: str | None
     telegram_bot_enabled: bool
     telegram_bot_token: str | None
     telegram_allowed_chat_ids: list[int]
@@ -208,17 +214,19 @@ class Settings:
     def from_yaml(cls) -> "Settings":
         """Build Settings from YAML config file only."""
         _load_local_env_file()
-        config_path = DEFAULT_APP_CONFIG_PATH
+        config_path = _resolve_config_path()
         config_data = _load_yaml_config(config_path)
 
         cors_origins = _parse_origins(
             _yaml_get(config_data, "cors.origins", ["http://localhost:5173"])
         )
 
+        environment = _parse_string(_yaml_get(config_data, "app.environment"), "development").lower()
+
         return cls(
             config_file_path=config_path,
             app_name=_parse_string(_yaml_get(config_data, "app.name"), "Daily Status Manager API"),
-            environment=_parse_string(_yaml_get(config_data, "app.environment"), "development"),
+            environment=environment,
             storage_mode=_parse_choice(
                 _yaml_get(config_data, "storage.mode"),
                 "local",
@@ -255,8 +263,6 @@ class Settings:
                 BASE_DIR / "backend" / "data" / "sample_people.xlsx",
             ),
             cors_origins=cors_origins,
-            write_api_key=_parse_optional_string(os.getenv("WRITE_API_KEY"))
-            or _parse_optional_string(_yaml_get(config_data, "security.write_api_key")),
             telegram_bot_enabled=_parse_bool(
                 _yaml_get(config_data, "telegram.enabled", False),
                 default=False,

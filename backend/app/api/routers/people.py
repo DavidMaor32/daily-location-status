@@ -1,8 +1,10 @@
+"""People API routes for CRUD operations and self-report updates."""
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from app.api.dependencies import require_write_access, service_dep
+from app.api.dependencies import service_dep
 from app.models import (
     InitialPeopleListCreate,
     InitialPeopleListResponse,
@@ -14,7 +16,7 @@ from app.models import (
 from app.services.snapshot_service import SnapshotService
 
 
-router = APIRouter(tags=["people"], dependencies=[Depends(require_write_access)])
+router = APIRouter(tags=["people"])
 
 
 @router.post("/api/people", response_model=PersonRecord)

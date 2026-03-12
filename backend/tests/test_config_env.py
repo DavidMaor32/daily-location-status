@@ -70,3 +70,24 @@ def test_settings_rejects_invalid_storage_mode(tmp_path: Path, monkeypatch) -> N
 
     with pytest.raises(ValueError, match="Invalid config value"):
         config_module.Settings.from_yaml()
+
+
+def test_settings_reads_config_path_from_env_override(tmp_path: Path, monkeypatch) -> None:
+    """APP_CONFIG_PATH should override default YAML path resolution."""
+    config_file = tmp_path / "custom_app_config.yaml"
+    config_file.write_text(
+        "app:\n"
+        "  name: env-config\n",
+        encoding="utf-8",
+    )
+    env_file = tmp_path / ".env"
+    env_file.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(config_module, "DEFAULT_APP_CONFIG_PATH", tmp_path / "missing.yaml")
+    monkeypatch.setattr(config_module, "DEFAULT_ENV_PATH", env_file)
+    monkeypatch.setenv("APP_CONFIG_PATH", str(config_file))
+
+    settings = config_module.Settings.from_yaml()
+
+    assert settings.app_name == "env-config"
+    assert settings.config_file_path == config_file

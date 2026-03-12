@@ -1,3 +1,5 @@
+// Main people table with quick status/location actions and per-row operations.
+
 import { getLocationChipClass } from "../constants/locations";
 import {
   DAILY_STATUS_BAD,
@@ -61,19 +63,19 @@ function PersonTable({
             <th>מיקום נוכחי</th>
             <th>סטטוס יומי</th>
             <th>
-              מיקום בהזנה עצמאית
+              מיקום בהזנה עצמית
               {!telegramActive ? (
                 <div className="column-note">{telegramMessage}</div>
               ) : null}
             </th>
             <th>
-              סטטוס בהזנה עצמאית
+              סטטוס בהזנה עצמית
               {!telegramActive ? (
                 <div className="column-note">{telegramMessage}</div>
               ) : null}
             </th>
             <th>הערות</th>
-            <th>עודכן לאחרונה</th>
+            <th>עודכן אחרונה</th>
             <th>פעולות</th>
           </tr>
         </thead>
@@ -81,7 +83,7 @@ function PersonTable({
           {people.length === 0 ? (
             <tr>
               <td colSpan={8} className="empty-row">
-                לא נמצאו נתונים לתצוגה
+                לא נמצאו נתונים להצגה
               </td>
             </tr>
           ) : (
@@ -174,9 +176,7 @@ function PersonTable({
                 <td>
                   {person.self_daily_status ? (
                     <span
-                      className={`status-chip ${getDailyStatusChipClass(
-                        person.self_daily_status
-                      )}`}
+                      className={`status-chip ${getDailyStatusChipClass(person.self_daily_status)}`}
                     >
                       {person.self_daily_status}
                     </span>

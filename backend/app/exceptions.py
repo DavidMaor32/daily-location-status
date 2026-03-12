@@ -1,3 +1,5 @@
+"""Application-level exception hierarchy used across API and services."""
+
 from __future__ import annotations
 
 

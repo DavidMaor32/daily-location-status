@@ -1,3 +1,5 @@
+"""Location tracking API routes for person events and computed transitions."""
+
 from __future__ import annotations
 
 from datetime import date
@@ -5,7 +7,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 
-from app.api.dependencies import parse_date, require_write_access, service_dep
+from app.api.dependencies import parse_date, service_dep
 from app.models import (
     LocationEventCreate,
     LocationEventVoidReasonType,
@@ -57,7 +59,6 @@ def get_person_location_transitions(
 @router.post(
     "/api/people/{person_id}/location-events",
     response_model=PersonLocationEventsResponse,
-    dependencies=[Depends(require_write_access)],
 )
 def create_person_location_event(
     person_id: str,
@@ -79,7 +80,6 @@ def create_person_location_event(
 @router.delete(
     "/api/people/{person_id}/location-events/{event_id}",
     response_model=PersonLocationEventsResponse,
-    dependencies=[Depends(require_write_access)],
 )
 def delete_person_location_event(
     person_id: str,

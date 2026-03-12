@@ -1,16 +1,11 @@
+// Modal component for adding/editing one person in today's snapshot.
+
 import { useEffect, useState } from "react";
 import {
   DAILY_STATUS_BAD,
   DAILY_STATUS_MISSING,
   DAILY_STATUS_OK,
 } from "../constants/statuses";
-
-const defaultForm = {
-  full_name: "",
-  location: "בבית",
-  daily_status: DAILY_STATUS_MISSING,
-  notes: "",
-};
 
 // Modal form used for both add-person and edit-person actions.
 function PersonFormModal({
@@ -23,6 +18,13 @@ function PersonFormModal({
   onDelete,
   loading,
 }) {
+  const homeLocation = locationOptions[0] || "בבית";
+  const defaultForm = {
+    full_name: "",
+    location: homeLocation,
+    daily_status: DAILY_STATUS_MISSING,
+    notes: "",
+  };
   const [form, setForm] = useState(defaultForm);
 
   // Populate form with current person data when opening edit mode.
@@ -34,7 +36,7 @@ function PersonFormModal({
     if (initialData) {
       setForm({
         full_name: initialData.full_name || "",
-        location: initialData.location || "בבית",
+        location: initialData.location || homeLocation,
         daily_status: initialData.daily_status || DAILY_STATUS_MISSING,
         notes: initialData.notes || "",
       });
@@ -42,13 +44,13 @@ function PersonFormModal({
     }
 
     setForm(defaultForm);
-  }, [open, initialData]);
+  }, [open, initialData, homeLocation]);
 
   if (!open) {
     return null;
   }
 
-  const title = mode === "edit" ? "עריכת אדם" : "הוספת אדם חדש";
+  const title = mode === "edit" ? "עריכת איש" : "הוספת איש חדש";
 
   // Submit a normalized payload to the parent component.
   const handleSubmit = (event) => {
@@ -130,7 +132,7 @@ function PersonFormModal({
                 onClick={onDelete}
                 disabled={loading}
               >
-                מחק אדם
+                מחק איש
               </button>
             ) : null}
             <button type="submit" className="btn btn-primary" disabled={loading}>

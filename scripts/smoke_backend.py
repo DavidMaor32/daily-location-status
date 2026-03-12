@@ -1,3 +1,5 @@
+"""Temporary backend boot + smoke-check script for critical API readiness validation."""
+
 from __future__ import annotations
 
 import json
@@ -12,35 +14,11 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-import yaml
-
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BACKEND_DIR = REPO_ROOT / "backend"
-CONFIG_PATH = REPO_ROOT / "config" / "app_config.yaml"
 HOST = "127.0.0.1"
 PORT = int(os.getenv("SMOKE_BACKEND_PORT", "8011"))
 STARTUP_TIMEOUT_SECONDS = 40
-
-
-def load_write_api_key() -> str:
-    """Load effective write API key used by write endpoints (env overrides YAML)."""
-    env_key = (os.getenv("WRITE_API_KEY") or "").strip()
-    if env_key:
-        return env_key
-
-    if not CONFIG_PATH.exists():
-        return ""
-
-    try:
-        parsed = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8")) or {}
-    except Exception:  # noqa: BLE001
-        return ""
-
-    security_block = parsed.get("security") if isinstance(parsed, dict) else {}
-    if not isinstance(security_block, dict):
-        return ""
-    return str(security_block.get("write_api_key") or "").strip()
 
 
 def request_json(
@@ -91,9 +69,6 @@ def run_smoke_checks() -> None:
 
     target_date = date.today().isoformat()
     headers = {"Content-Type": "application/json"}
-    write_api_key = load_write_api_key()
-    if write_api_key:
-        headers["X-API-Key"] = write_api_key
 
     try:
         save_status, save_payload = request_json(
