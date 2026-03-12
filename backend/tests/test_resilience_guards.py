@@ -6,8 +6,12 @@ from pathlib import Path
 import pytest
 
 from app.config import Settings
-from app.exceptions import StorageError
-from app.services.telegram_bot_service import TelegramBotService
+from app.exceptions import StorageError, ValidationError
+from app.services.telegram_bot_service import (
+    STATE_WAITING_LOCATION,
+    STATUS_OPTIONS,
+    TelegramBotService,
+)
 from app.storage.providers import MirroredStorageProvider
 
 
@@ -45,6 +49,35 @@ class _InMemoryProvider:
 
 class _DummySnapshotService:
     """Placeholder snapshot service for Telegram service tests."""
+
+
+class _MutableLocationsSnapshotService:
+    """Minimal snapshot service with mutable configured locations for Telegram flow tests."""
+
+    def __init__(self, locations: list[str]) -> None:
+        self.locations = list(locations)
+
+    def get_locations(self) -> list[str]:
+        return list(self.locations)
+
+    def update_self_report_today(
+        self,
+        *,
+        person_lookup: str,
+        self_location: str,
+        self_daily_status: str,
+    ) -> dict:
+        if self_location not in self.locations:
+            options_preview = ", ".join(self.locations)
+            raise ValidationError(
+                f"self_location must be one of configured locations: {options_preview}"
+            )
+        return {
+            "person_id": person_lookup,
+            "full_name": person_lookup,
+            "self_location": self_location,
+            "self_daily_status": self_daily_status,
+        }
 
 
 def _build_settings(
@@ -205,3 +238,72 @@ def test_waiting_name_invalid_in_whitelist_keeps_keyboard_hidden(tmp_path: Path,
 
     assert captured_error["chat_id"] == 789
     assert captured_error["reply_markup"] == {"remove_keyboard": True}
+
+
+def test_waiting_location_uses_latest_configured_locations(tmp_path: Path, monkeypatch) -> None:
+    """Location step must validate against current configured locations, not stale conversation cache."""
+    settings = _build_settings(tmp_path=tmp_path, telegram_enabled=True)
+    snapshot_service = _MutableLocationsSnapshotService(["HQ", "Site A"])
+    service = TelegramBotService(settings=settings, snapshot_service=snapshot_service)
+    captured_error: dict = {}
+
+    def _fake_validation_error(
+        self, chat_id: int, message: str, reply_markup: dict
+    ) -> None:
+        captured_error["chat_id"] = chat_id
+        captured_error["message"] = message
+        captured_error["reply_markup"] = reply_markup
+
+    monkeypatch.setattr(TelegramBotService, "_send_step_validation_error", _fake_validation_error)
+    # Simulate stale conversation data that still includes a removed location.
+    conversation = {
+        "person_lookup": "1",
+        "person_name": "Alice",
+        "locations": ["HQ", "Site A", "Old Site"],
+    }
+    service._handle_waiting_location(1001, "Old Site", conversation)
+
+    keyboard_rows = captured_error["reply_markup"]["keyboard"]
+    keyboard_items = [item for row in keyboard_rows for item in row]
+    assert captured_error["chat_id"] == 1001
+    assert set(keyboard_items) == {"HQ", "Site A"}
+    assert "Old Site" not in keyboard_items
+
+
+def test_waiting_status_restarts_location_step_when_selected_location_removed(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """If selected location is deleted between steps, flow must return to location step with fresh keyboard."""
+    settings = _build_settings(tmp_path=tmp_path, telegram_enabled=True)
+    snapshot_service = _MutableLocationsSnapshotService(["HQ", "Site A"])
+    service = TelegramBotService(settings=settings, snapshot_service=snapshot_service)
+    captured_error: dict = {}
+
+    def _fake_validation_error(
+        self, chat_id: int, message: str, reply_markup: dict
+    ) -> None:
+        captured_error["chat_id"] = chat_id
+        captured_error["message"] = message
+        captured_error["reply_markup"] = reply_markup
+
+    monkeypatch.setattr(TelegramBotService, "_send_step_validation_error", _fake_validation_error)
+    service._handle_waiting_status(
+        1002,
+        STATUS_OPTIONS[0],
+        {
+            "person_lookup": "1",
+            "person_name": "Alice",
+            "selected_location": "Old Site",
+        },
+    )
+
+    conversation = service._get_conversation(1002)
+    keyboard_rows = captured_error["reply_markup"]["keyboard"]
+    keyboard_items = [item for row in keyboard_rows for item in row]
+
+    assert conversation is not None
+    assert conversation["state"] == STATE_WAITING_LOCATION
+    assert conversation["person_lookup"] == "1"
+    assert conversation["person_name"] == "Alice"
+    assert set(keyboard_items) == {"HQ", "Site A"}
+    assert "Old Site" not in keyboard_items

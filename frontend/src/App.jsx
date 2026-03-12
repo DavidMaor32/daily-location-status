@@ -144,22 +144,16 @@ function App() {
   const [trackingLoading, setTrackingLoading] = useState(false);
 
   const isReadOnly = snapshot.date !== todayString;
-
-  const effectiveLocationOptions = useMemo(() => {
-    const locationsFromSnapshot = snapshot.people.map((person) =>
-      String(person?.location || "")
-    );
-    return uniqueLocations([
-      ...DEFAULT_LOCATION_OPTIONS,
-      ...locationOptions,
-      ...locationsFromSnapshot,
-    ]);
-  }, [locationOptions, snapshot.people]);
+  const homeLocation = DEFAULT_LOCATION_OPTIONS[0];
+  const configuredLocationOptions = useMemo(
+    () => uniqueLocations(locationOptions),
+    [locationOptions]
+  );
 
   // "Home" is required default location, so it is excluded from delete options.
   const deletableLocationOptions = useMemo(() => {
-    return locationOptions.filter((location) => location !== "בבית");
-  }, [locationOptions]);
+    return locationOptions.filter((location) => location !== homeLocation);
+  }, [locationOptions, homeLocation]);
 
   const filteredPeople = useMemo(() => {
     return snapshot.people
@@ -311,7 +305,9 @@ function App() {
 
   function applyLocationOptions(apiLocations) {
     const safeApiLocations = Array.isArray(apiLocations) ? apiLocations : [];
-    setLocationOptions(uniqueLocations([...DEFAULT_LOCATION_OPTIONS, ...safeApiLocations]));
+    const fallbackLocations =
+      safeApiLocations.length > 0 ? safeApiLocations : DEFAULT_LOCATION_OPTIONS;
+    setLocationOptions(uniqueLocations(fallbackLocations));
   }
 
   function applyTrackingResponse(response, { allowUndoStart = false } = {}) {
@@ -635,7 +631,7 @@ function App() {
       return;
     }
 
-    if (effectiveLocationOptions.includes(normalized)) {
+    if (configuredLocationOptions.includes(normalized)) {
       setError("המיקום כבר קיים ברשימה");
       return;
     }
@@ -921,7 +917,7 @@ function App() {
             onChange={(event) => setLocationFilter(event.target.value)}
           >
             <option value="all">הכול</option>
-            {effectiveLocationOptions.map((location) => (
+            {configuredLocationOptions.map((location) => (
               <option key={location} value={location}>
                 {location}
               </option>
@@ -1085,7 +1081,7 @@ function App() {
         ) : (
           <PersonTable
             people={filteredPeople}
-            locationOptions={effectiveLocationOptions}
+            locationOptions={configuredLocationOptions}
             readOnly={isReadOnly || actionLoading}
             telegramActive={systemStatus.telegram_active}
             telegramMessage={systemStatus.telegram_message}
@@ -1100,7 +1096,7 @@ function App() {
         open={modalOpen}
         mode={modalMode}
         initialData={editingPerson}
-        locationOptions={effectiveLocationOptions}
+        locationOptions={configuredLocationOptions}
         loading={actionLoading}
         onDelete={handleDeletePerson}
         onClose={() => {
@@ -1118,7 +1114,7 @@ function App() {
         person={trackingPerson}
         readOnly={isReadOnly}
         loading={trackingLoading || actionLoading}
-        locationOptions={effectiveLocationOptions}
+        locationOptions={configuredLocationOptions}
         events={trackingEvents}
         transitions={trackingTransitions}
         latestTransitionWarning={latestTransitionWarning}

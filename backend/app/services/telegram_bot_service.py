@@ -297,6 +297,19 @@ class TelegramBotService:
             reply_markup=self._build_keyboard(list(STATUS_OPTIONS), row_size=2),
         )
 
+    def _get_current_locations(self) -> list[str]:
+        """Return non-empty location options from current configured locations list."""
+        return [
+            str(item).strip()
+            for item in self.snapshot_service.get_locations()
+            if str(item).strip()
+        ]
+
+    def _is_location_config_mismatch_error(self, message: str) -> bool:
+        """Return True when status submission failed because location is no longer configured."""
+        normalized = str(message or "").lower()
+        return "must be one of configured locations" in normalized
+
     def _continue_conversation(self, chat_id: int, text: str, conversation: dict) -> None:
         """Continue guided conversation according to current chat state."""
         state = conversation.get("state")
@@ -345,7 +358,7 @@ class TelegramBotService:
                 "person_lookup": typed_name,
             }
 
-        locations = self.snapshot_service.get_locations()
+        locations = self._get_current_locations()
         if not locations:
             self._send_step_validation_error(
                 chat_id,
@@ -360,14 +373,21 @@ class TelegramBotService:
                 "state": STATE_WAITING_LOCATION,
                 "person_lookup": selected["person_lookup"],
                 "person_name": selected["full_name"],
-                "locations": locations,
             },
         )
         self._prompt_location_step(chat_id, locations)
 
     def _handle_waiting_location(self, chat_id: int, text: str, conversation: dict) -> None:
         """Validate location and move flow to status step."""
-        locations = [str(item).strip() for item in conversation.get("locations", []) if str(item).strip()]
+        locations = self._get_current_locations()
+        if not locations:
+            self._send_step_validation_error(
+                chat_id,
+                "No locations are currently configured. Ask an admin to add locations and retry.",
+                reply_markup=self._remove_keyboard_markup(),
+            )
+            return
+
         selected_location = self._match_text_option(text, locations)
         if not selected_location:
             self._send_step_validation_error(
@@ -420,6 +440,29 @@ class TelegramBotService:
             self._start_conversation(chat_id)
             return
         except AppError as exc:
+            if self._is_location_config_mismatch_error(str(exc)):
+                locations = self._get_current_locations()
+                self._set_conversation(
+                    chat_id,
+                    {
+                        "state": STATE_WAITING_LOCATION,
+                        "person_lookup": person_lookup,
+                        "person_name": person_name,
+                    },
+                )
+                if not locations:
+                    self._send_step_validation_error(
+                        chat_id,
+                        "Selected location is no longer available, and no locations are currently configured.",
+                        reply_markup=self._remove_keyboard_markup(),
+                    )
+                    return
+                self._send_step_validation_error(
+                    chat_id,
+                    "Selected location is no longer available. Please choose from the updated list.",
+                    reply_markup=self._build_keyboard(locations),
+                )
+                return
             self._send_step_validation_error(
                 chat_id,
                 f"ההזנה לא נקלטה בהצלחה: {exc}",
