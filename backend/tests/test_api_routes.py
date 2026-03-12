@@ -273,3 +273,57 @@ def test_transitions_api_includes_transition_source(tmp_path: Path) -> None:
     assert len(transitions) == 1
     assert transitions[0]["transition_source"] == "ui"
     assert transitions[0]["transition_source_raw"] == "manual_ui"
+
+
+def test_self_report_api_creates_tracking_events_and_transition(tmp_path: Path) -> None:
+    """POST /api/self-report should create tracking events that appear in timeline/transitions."""
+    service, settings = _build_service(tmp_path=tmp_path, seed_names=["Alice"])
+    client = _build_test_client(service, settings)
+
+    today_payload = client.get("/api/snapshot/today").json()
+    person = today_payload["people"][0]
+    person_id = person["person_id"]
+    person_name = person["full_name"]
+    locations = service.get_locations()
+
+    first_self_report = client.post(
+        "/api/self-report",
+        json={
+            "person_lookup": person_name,
+            "self_location": locations[1],
+            "self_daily_status": "תקין",
+        },
+    )
+    assert first_self_report.status_code == 200
+
+    second_self_report = client.post(
+        "/api/self-report",
+        json={
+            "person_lookup": person_name,
+            "self_location": locations[3],
+            "self_daily_status": "לא תקין",
+        },
+    )
+    assert second_self_report.status_code == 200
+
+    events_response = client.get(f"/api/people/{person_id}/location-events")
+    assert events_response.status_code == 200
+    events = events_response.json()["events"]
+    assert len(events) == 2
+    assert events[0]["source"] == "self_report_api"
+    assert events[1]["source"] == "self_report_api"
+
+    transitions_response = client.get(f"/api/people/{person_id}/transitions")
+    assert transitions_response.status_code == 200
+    transitions = transitions_response.json()["transitions"]
+    assert len(transitions) == 1
+    assert transitions[0]["transition_source"] == "bot"
+    assert transitions[0]["transition_source_raw"] == "self_report_api"
+
+    latest_event_id = events[0]["event_id"]
+    delete_response = client.delete(f"/api/people/{person_id}/location-events/{latest_event_id}")
+    assert delete_response.status_code == 200
+
+    transitions_after_delete = client.get(f"/api/people/{person_id}/transitions")
+    assert transitions_after_delete.status_code == 200
+    assert transitions_after_delete.json()["transitions"] == []

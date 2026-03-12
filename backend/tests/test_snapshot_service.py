@@ -371,6 +371,74 @@ def test_update_self_report_rejects_too_long_location(tmp_path: Path) -> None:
         assert "self_location" in str(exc)
 
 
+def test_update_self_report_creates_tracking_events_and_transitions(tmp_path: Path) -> None:
+    """Self-report updates should be reflected in tracking timeline and computed transitions."""
+    service = _build_service(tmp_path=tmp_path, seed_names=["Alice"])
+    today = date.today()
+    person = service.get_today_snapshot()["people"][0]
+    person_id = str(person["person_id"])
+
+    service.update_self_report_today(
+        person_lookup="Alice",
+        self_location="מיקום 1",
+        self_daily_status="תקין",
+        source="self_report_bot",
+    )
+    service.update_self_report_today(
+        person_lookup="Alice",
+        self_location="מיקום 3",
+        self_daily_status="לא תקין",
+        source="self_report_bot",
+    )
+
+    events_payload = service.get_person_location_events(person_id, today)
+    assert len(events_payload["events"]) == 2
+    assert events_payload["events"][0]["location"] == "מיקום 3"
+    assert events_payload["events"][0]["daily_status"] == "לא תקין"
+    assert events_payload["events"][0]["source"] == "self_report_bot"
+    assert events_payload["events"][1]["location"] == "מיקום 1"
+    assert events_payload["events"][1]["source"] == "self_report_bot"
+
+    transitions_payload = service.get_person_location_transitions(person_id, today)
+    assert len(transitions_payload["transitions"]) == 1
+    transition_row = transitions_payload["transitions"][0]
+    assert transition_row["from_location"] == "מיקום 1"
+    assert transition_row["to_location"] == "מיקום 3"
+    assert transition_row["transition_source"] == "bot"
+    assert transition_row["transition_source_raw"] == "self_report_bot"
+
+    snapshot_after_updates = service.get_today_snapshot()
+    person_after_updates = next(
+        item for item in snapshot_after_updates["people"] if item["person_id"] == person_id
+    )
+    assert person_after_updates["location"] == "מיקום 3"
+    assert person_after_updates["daily_status"] == "לא תקין"
+    assert person_after_updates["self_location"] == "מיקום 3"
+    assert person_after_updates["self_daily_status"] == "לא תקין"
+
+
+def test_update_person_daily_status_only_creates_tracking_events(tmp_path: Path) -> None:
+    """Manual daily-status edits should be tracked even when location does not change."""
+    service = _build_service(tmp_path=tmp_path, seed_names=["Alice"])
+    today = date.today()
+    person = service.get_today_snapshot()["people"][0]
+    person_id = str(person["person_id"])
+    current_location = str(person["location"])
+
+    service.update_person_today(person_id, PersonUpdate(daily_status="תקין"))
+    service.update_person_today(person_id, PersonUpdate(daily_status="לא תקין"))
+
+    events_payload = service.get_person_location_events(person_id, today)
+    assert len(events_payload["events"]) == 2
+    assert events_payload["events"][0]["daily_status"] == "לא תקין"
+    assert events_payload["events"][1]["daily_status"] == "תקין"
+    assert all(item["location"] == current_location for item in events_payload["events"])
+    assert all(item["source"] == "quick_update" for item in events_payload["events"])
+
+    transitions_payload = service.get_person_location_transitions(person_id, today)
+    assert transitions_payload["transitions"] == []
+
+
 def test_location_events_add_delete_recalculates_current_snapshot_state(tmp_path: Path) -> None:
     """Hard-deleting tracking events should roll person state back with no deletion trace."""
     service = _build_service(tmp_path=tmp_path, seed_names=["Alice"])

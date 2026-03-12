@@ -769,6 +769,7 @@ class SnapshotService:
 
             row_index = matches[0]
             previous_location = self._normalize_location(snapshot_df.at[row_index, "location"])
+            previous_daily_status = self._normalize_daily_status(snapshot_df.at[row_index, "daily_status"])
             for field_name, field_value in patch.items():
                 if field_value is not None:
                     if field_name == "location":
@@ -798,7 +799,11 @@ class SnapshotService:
             next_location = self._normalize_location(snapshot_df.at[row_index, "location"])
             next_daily_status = self._normalize_daily_status(snapshot_df.at[row_index, "daily_status"])
             events_df_for_save: pd.DataFrame | None = None
-            if next_location != previous_location:
+            should_append_tracking_event = (
+                next_location != previous_location
+                or next_daily_status != previous_daily_status
+            )
+            if should_append_tracking_event:
                 events_df = self.load_location_events(today)
                 _, events_df_for_save = self._append_location_event(
                     events_df=events_df,
@@ -826,7 +831,14 @@ class SnapshotService:
             updated_row = snapshot_df.loc[snapshot_df["person_id"] == person_id].iloc[0]
             return self._row_to_record(updated_row)
 
-    def update_self_report_today(self, person_lookup: str, self_location: str, self_daily_status: str) -> dict:
+    def update_self_report_today(
+        self,
+        person_lookup: str,
+        self_location: str,
+        self_daily_status: str,
+        *,
+        source: str = "self_report_bot",
+    ) -> dict:
         """
         Update self-reported location and status for today's snapshot.
 
@@ -852,10 +864,23 @@ class SnapshotService:
             status_value = self._normalize_required_daily_status(self_daily_status)
             snapshot_df.at[row_index, "self_location"] = location_value
             snapshot_df.at[row_index, "self_daily_status"] = status_value
+            events_df = self.load_location_events(today)
+            _, events_df = self._append_location_event(
+                events_df=events_df,
+                snapshot_date=today,
+                person_id=person_id,
+                full_name=str(snapshot_df.at[row_index, "full_name"]),
+                event_type="move",
+                location=location_value,
+                daily_status=status_value,
+                occurred_at=self._now_iso_precise(),
+                source=source,
+            )
+            self._apply_current_state_from_events(snapshot_df, row_index, person_id, events_df)
             snapshot_df.at[row_index, "last_updated"] = self._now_iso()
 
             snapshot_df = self._normalize_snapshot_df(snapshot_df, today)
-            self.save_snapshot(today, snapshot_df)
+            self._persist_daily_workbook(today, snapshot_df, events_df)
 
             updated_row = snapshot_df.loc[snapshot_df["person_id"] == person_id].iloc[0]
             return self._row_to_record(updated_row)

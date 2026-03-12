@@ -55,6 +55,7 @@ def create_self_report(
             person_lookup=payload.person_lookup,
             self_location=payload.self_location,
             self_daily_status=payload.self_daily_status,
+            source="self_report_api",
         )
     )
 

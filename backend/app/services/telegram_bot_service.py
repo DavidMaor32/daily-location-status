@@ -515,6 +515,7 @@ class TelegramBotService:
                 person_lookup=person_lookup,
                 self_location=self_location,
                 self_daily_status=self_daily_status,
+                source="self_report_bot",
             )
             return updated_person, False
         except NotFoundError:
@@ -543,6 +544,7 @@ class TelegramBotService:
                 person_lookup=str(created_person["person_id"]),
                 self_location=self_location,
                 self_daily_status=self_daily_status,
+                source="self_report_bot",
             )
             return updated_person, True
 

@@ -71,6 +71,7 @@ class _MutableLocationsSnapshotService:
         person_lookup: str,
         self_location: str,
         self_daily_status: str,
+        source: str = "self_report_bot",
     ) -> dict:
         if self_location not in self.locations:
             options_preview = ", ".join(self.locations)
