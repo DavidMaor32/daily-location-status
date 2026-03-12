@@ -121,7 +121,7 @@ def test_patch_person_rejects_unknown_location(tmp_path: Path) -> None:
     today_payload = client.get("/api/snapshot/today").json()
     person_id = today_payload["people"][0]["person_id"]
 
-    response = client.patch(f"/api/people/{person_id}", json={"location": "׳׳™׳§׳•׳ ׳׳ ׳§׳™׳™׳"})
+    response = client.patch(f"/api/people/{person_id}", json={"location": "מיקום לא קיים"})
     assert response.status_code == 400
     assert "configured locations" in response.json()["detail"]
 

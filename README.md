@@ -12,7 +12,7 @@ Code comments and project documentation are in English.
 - Every date is stored as a full snapshot Excel file.
 - People are maintained in a master list so they do not need to be re-entered daily.
 - If a date file does not exist, the system can auto-create it from master list.
-- Daily status default is `׳׳ ׳”׳•׳–׳`.
+- Daily status default is `לא הוזן`.
 
 ## Security & Reliability
 
@@ -186,14 +186,14 @@ In S3 or dual mode:
 
 Daily status (`daily_status`):
 
-- `׳×׳§׳™׳`
-- `׳׳ ׳×׳§׳™׳`
-- `׳׳ ׳”׳•׳–׳`
+- `תקין`
+- `לא תקין`
+- `לא הוזן`
 
 Self-report status (`self_daily_status`):
 
-- `׳×׳§׳™׳`
-- `׳׳ ׳×׳§׳™׳`
+- `תקין`
+- `לא תקין`
 
 ## Main API Endpoints
 
