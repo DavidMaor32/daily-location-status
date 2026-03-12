@@ -181,6 +181,7 @@ function PersonTrackingModal({
               <button
                 type="submit"
                 className="btn btn-primary"
+                data-testid="tracking-add-event-button"
                 disabled={loading || !form.location}
               >
                 הוסף אירוע
@@ -188,6 +189,7 @@ function PersonTrackingModal({
               <button
                 type="button"
                 className="btn btn-secondary"
+                data-testid="tracking-undo-button"
                 disabled={loading || !canUndo}
                 onClick={onUndoLastAction}
               >

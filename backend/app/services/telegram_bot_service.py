@@ -268,15 +268,11 @@ class TelegramBotService:
             self._send_message(
                 chat_id,
                 "שלב 1/3: מה השם של הבן אדם?",
-                reply_markup=self._build_keyboard([item["label"] for item in person_options]),
+                reply_markup=self._remove_keyboard_markup(),
             )
             return
 
-        keyboard = (
-            self._build_keyboard([item["label"] for item in person_options])
-            if person_options
-            else self._remove_keyboard_markup()
-        )
+        keyboard = self._remove_keyboard_markup()
         self._send_message(
             chat_id,
             "שלב 1/3: מה השם של הבן אדם? (אפשר להקליד כל שם מלא)",
@@ -329,7 +325,7 @@ class TelegramBotService:
                 self._send_step_validation_error(
                     chat_id,
                     "השם לא נמצא ברשימה המורשית. בחר/י שם מהרשימה.",
-                    reply_markup=self._build_keyboard([item["label"] for item in person_options]),
+                    reply_markup=self._remove_keyboard_markup(),
                 )
                 return
 

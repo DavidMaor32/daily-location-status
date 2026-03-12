@@ -852,6 +852,7 @@ function App() {
             <label htmlFor="snapshot-date">בחירת תאריך</label>
             <input
               id="snapshot-date"
+              data-testid="snapshot-date-input"
               type="date"
               value={selectedDate}
               onChange={(event) => setSelectedDate(event.target.value)}
@@ -859,6 +860,7 @@ function App() {
             />
             <button
               className="btn btn-primary"
+              data-testid="load-date-button"
               onClick={() => loadSelectedDate(selectedDate)}
               disabled={loading || !selectedDate}
             >
@@ -891,6 +893,7 @@ function App() {
               </button>
               <button
                 className="btn btn-danger"
+                data-testid="delete-date-button"
                 onClick={handleDeleteDate}
                 disabled={actionLoading}
               >

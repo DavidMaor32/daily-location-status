@@ -8,6 +8,7 @@ from zipfile import ZipFile
 import pandas as pd
 
 from app.config import Settings
+from app.models import PersonUpdate
 from app.services.snapshot_service import (
     DEFAULT_DAILY_STATUS,
     DEFAULT_LOCATION,
@@ -188,7 +189,11 @@ def test_delete_snapshot_for_date_removes_daily_workbook_and_legacy_events_file(
     payload = service.delete_snapshot_for_date(target_date)
     assert payload["date"] == target_date.isoformat()
     assert payload["snapshot_deleted"] is True
+    assert payload["events_existed"] is True
+    assert payload["snapshot_events_existed"] is False
+    assert payload["legacy_events_existed"] is True
     assert payload["events_deleted"] is True
+    assert payload["snapshot_events_deleted"] is False
     assert payload["snapshot_key"] == snapshot_key
     assert payload["events_key"] == f"{snapshot_key}#location_events"
     assert payload["legacy_events_key"] == legacy_events_key
@@ -202,6 +207,85 @@ def test_delete_snapshot_for_date_removes_daily_workbook_and_legacy_events_file(
         assert False, "Expected NotFoundError for already deleted snapshot date"
     except NotFoundError:
         pass
+
+
+def test_delete_snapshot_for_date_reports_no_events_deleted_when_none_existed(tmp_path: Path) -> None:
+    """Deleting a date with no event rows should not report events_deleted=true."""
+    service = _build_service(tmp_path=tmp_path, seed_names=["Alice"])
+    target_date = date.today() - timedelta(days=4)
+    service.ensure_snapshot_for_date(target_date)
+
+    payload = service.delete_snapshot_for_date(target_date)
+    assert payload["date"] == target_date.isoformat()
+    assert payload["snapshot_deleted"] is True
+    assert payload["events_existed"] is False
+    assert payload["snapshot_events_existed"] is False
+    assert payload["legacy_events_existed"] is False
+    assert payload["events_deleted"] is False
+    assert payload["snapshot_events_deleted"] is False
+    assert payload["legacy_events_deleted"] is False
+
+
+def test_add_location_event_writes_daily_workbook_once(tmp_path: Path, monkeypatch) -> None:
+    """Adding one location event should persist the daily workbook exactly once."""
+    service = _build_service(tmp_path=tmp_path, seed_names=["Alice"])
+    today = date.today()
+    snapshot_key = f"{service.settings.s3_snapshots_prefix}/{today.isoformat()}.xlsx"
+    person_id = str(service.get_today_snapshot()["people"][0]["person_id"])
+    write_calls: list[str] = []
+
+    original_write_bytes = service.storage.write_bytes
+
+    def _counting_write_bytes(key: str, content: bytes) -> None:
+        write_calls.append(key)
+        original_write_bytes(key, content)
+
+    monkeypatch.setattr(service.storage, "write_bytes", _counting_write_bytes)
+    service.add_location_event_today(person_id=person_id, location="מיקום 1", daily_status="תקין")
+
+    assert write_calls.count(snapshot_key) == 1
+
+
+def test_update_person_location_writes_daily_workbook_once(tmp_path: Path, monkeypatch) -> None:
+    """Quick update location should append event and persist workbook only once."""
+    service = _build_service(tmp_path=tmp_path, seed_names=["Alice"])
+    today = date.today()
+    snapshot_key = f"{service.settings.s3_snapshots_prefix}/{today.isoformat()}.xlsx"
+    person_id = str(service.get_today_snapshot()["people"][0]["person_id"])
+    write_calls: list[str] = []
+
+    original_write_bytes = service.storage.write_bytes
+
+    def _counting_write_bytes(key: str, content: bytes) -> None:
+        write_calls.append(key)
+        original_write_bytes(key, content)
+
+    monkeypatch.setattr(service.storage, "write_bytes", _counting_write_bytes)
+    service.update_person_today(person_id, PersonUpdate(location="מיקום 2"))
+
+    assert write_calls.count(snapshot_key) == 1
+
+
+def test_initialize_snapshot_migrates_legacy_once_with_marker(tmp_path: Path, monkeypatch) -> None:
+    """Startup flow should run legacy migration once and skip it after marker is created."""
+    seed_file = tmp_path / "seed_people.xlsx"
+    pd.DataFrame([{"full_name": "Alice"}]).to_excel(seed_file, index=False)
+    settings = _build_settings(tmp_path=tmp_path, seed_file=seed_file)
+    storage = LocalStorageProvider(settings.local_storage_dir)
+    service = SnapshotService(settings=settings, storage=storage)
+
+    calls = {"migrate": 0}
+
+    def _fake_migrate(self: SnapshotService) -> dict:
+        calls["migrate"] += 1
+        return {"migrated_count": 0, "migrated_dates": [], "skipped_keys": []}
+
+    monkeypatch.setattr(SnapshotService, "migrate_legacy_location_events", _fake_migrate)
+    service.initialize_today_snapshot()
+    service.initialize_today_snapshot()
+
+    assert calls["migrate"] == 1
+    assert service.storage.exists(service._legacy_location_events_migration_marker_key())
 
 
 def test_migrate_legacy_events_moves_rows_into_snapshot_sheet(tmp_path: Path) -> None:
@@ -336,6 +420,32 @@ def test_location_events_add_delete_recalculates_current_snapshot_state(tmp_path
     transitions_payload = service.get_person_location_transitions(person_id, today)
     assert transitions_payload["transitions"] == []
 
+
+
+def test_daily_location_events_sheet_includes_full_name(tmp_path: Path) -> None:
+    """Daily workbook location_events sheet should include full_name for each event row."""
+    service = _build_service(tmp_path=tmp_path, seed_names=["Alice"])
+    today = date.today()
+    person = service.get_today_snapshot()["people"][0]
+    person_id = str(person["person_id"])
+    full_name = str(person["full_name"])
+
+    service.add_location_event_today(
+        person_id=person_id,
+        location="מיקום 1",
+        daily_status="תקין",
+    )
+
+    snapshot_key = f"{service.settings.s3_snapshots_prefix}/{today.isoformat()}.xlsx"
+    workbook = pd.read_excel(BytesIO(service.storage.read_bytes(snapshot_key)), sheet_name=None, dtype=str)
+    location_events_sheet = workbook["location_events"].fillna("")
+
+    assert "full_name" in location_events_sheet.columns
+    person_rows = location_events_sheet[
+        location_events_sheet["person_id"].astype(str) == person_id
+    ]
+    assert not person_rows.empty
+    assert set(person_rows["full_name"].tolist()) == {full_name}
 
 
 def test_export_day_excel_contains_location_tracking_history(tmp_path: Path) -> None:

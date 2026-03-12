@@ -160,7 +160,8 @@ def test_delete_snapshot_endpoint_removes_daily_workbook_and_events_data(tmp_pat
     payload = response.json()
     assert payload["date"] == target_date
     assert payload["snapshot_deleted"] is True
-    assert payload["events_deleted"] is True
+    assert payload["events_existed"] is False
+    assert payload["events_deleted"] is False
 
     missing_again = client.delete(f"/api/snapshot/{target_date}")
     assert missing_again.status_code == 404

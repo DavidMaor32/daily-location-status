@@ -9,6 +9,8 @@ backend/.venv/
 # Node
 frontend/node_modules/
 frontend/dist/
+frontend/playwright-report/
+frontend/test-results/
 
 # Runtime storage files
 backend/local_storage/

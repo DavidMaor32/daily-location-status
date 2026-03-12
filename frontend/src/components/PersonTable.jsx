@@ -191,6 +191,7 @@ function PersonTable({
                 <td>
                   <button
                     className="btn btn-secondary"
+                    data-testid={`track-person-${person.person_id}`}
                     onClick={() => onTrack(person)}
                   >
                     מעקב

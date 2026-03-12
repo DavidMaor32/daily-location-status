@@ -44,10 +44,15 @@ class _InMemoryProvider:
 
 
 class _DummySnapshotService:
-    """Placeholder snapshot service for Telegram service startup tests."""
+    """Placeholder snapshot service for Telegram service tests."""
 
 
-def _build_settings(tmp_path: Path, *, telegram_enabled: bool = True) -> Settings:
+def _build_settings(
+    tmp_path: Path,
+    *,
+    telegram_enabled: bool = True,
+    telegram_allowed_remote_names: list[str] | None = None,
+) -> Settings:
     """Create Settings object with local storage for isolated tests."""
     return Settings(
         config_file_path=tmp_path / "config.yaml",
@@ -70,7 +75,7 @@ def _build_settings(tmp_path: Path, *, telegram_enabled: bool = True) -> Setting
         telegram_bot_enabled=telegram_enabled,
         telegram_bot_token="token-for-tests",
         telegram_allowed_chat_ids=[],
-        telegram_allowed_remote_names=[],
+        telegram_allowed_remote_names=telegram_allowed_remote_names or [],
         telegram_poll_timeout_seconds=25,
         telegram_poll_retry_seconds=1,
     )
@@ -123,3 +128,81 @@ def test_telegram_poller_singleton_lock_blocks_second_instance(tmp_path: Path, m
     finally:
         second.stop()
         first.stop()
+
+
+def test_prompt_name_step_hides_name_options_in_open_mode(tmp_path: Path, monkeypatch) -> None:
+    """Name step must not expose optional person names as Telegram keyboard choices."""
+    settings = _build_settings(tmp_path=tmp_path, telegram_enabled=True)
+    service = TelegramBotService(settings=settings, snapshot_service=_DummySnapshotService())
+    sent_payload: dict = {}
+
+    def _fake_send_message(self, chat_id: int, text: str, reply_markup: dict | None = None) -> None:
+        sent_payload["chat_id"] = chat_id
+        sent_payload["text"] = text
+        sent_payload["reply_markup"] = reply_markup
+
+    monkeypatch.setattr(TelegramBotService, "_send_message", _fake_send_message)
+    service._prompt_name_step(
+        123,
+        [{"label": "Alice", "full_name": "Alice", "person_lookup": "1"}],
+    )
+
+    assert sent_payload["chat_id"] == 123
+    assert sent_payload["reply_markup"] == {"remove_keyboard": True}
+
+
+def test_prompt_name_step_hides_name_options_in_whitelist_mode(tmp_path: Path, monkeypatch) -> None:
+    """Whitelist mode should also keep name entry as free text (no suggested names)."""
+    settings = _build_settings(
+        tmp_path=tmp_path,
+        telegram_enabled=True,
+        telegram_allowed_remote_names=["Alice"],
+    )
+    service = TelegramBotService(settings=settings, snapshot_service=_DummySnapshotService())
+    sent_payload: dict = {}
+
+    def _fake_send_message(self, chat_id: int, text: str, reply_markup: dict | None = None) -> None:
+        sent_payload["chat_id"] = chat_id
+        sent_payload["text"] = text
+        sent_payload["reply_markup"] = reply_markup
+
+    monkeypatch.setattr(TelegramBotService, "_send_message", _fake_send_message)
+    service._prompt_name_step(
+        456,
+        [{"label": "Alice", "full_name": "Alice", "person_lookup": "1"}],
+    )
+
+    assert sent_payload["chat_id"] == 456
+    assert sent_payload["reply_markup"] == {"remove_keyboard": True}
+
+
+def test_waiting_name_invalid_in_whitelist_keeps_keyboard_hidden(tmp_path: Path, monkeypatch) -> None:
+    """Validation errors for invalid names must not show suggested names keyboard."""
+    settings = _build_settings(
+        tmp_path=tmp_path,
+        telegram_enabled=True,
+        telegram_allowed_remote_names=["Alice"],
+    )
+    service = TelegramBotService(settings=settings, snapshot_service=_DummySnapshotService())
+    captured_error: dict = {}
+
+    def _fake_validation_error(
+        self, chat_id: int, message: str, reply_markup: dict
+    ) -> None:
+        captured_error["chat_id"] = chat_id
+        captured_error["message"] = message
+        captured_error["reply_markup"] = reply_markup
+
+    monkeypatch.setattr(TelegramBotService, "_send_step_validation_error", _fake_validation_error)
+    service._handle_waiting_name(
+        789,
+        "Unknown Name",
+        {
+            "person_options": [
+                {"label": "Alice", "full_name": "Alice", "person_lookup": "1"},
+            ]
+        },
+    )
+
+    assert captured_error["chat_id"] == 789
+    assert captured_error["reply_markup"] == {"remove_keyboard": True}

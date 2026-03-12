@@ -214,6 +214,14 @@ cd frontend
 npm run build
 ```
 
+Frontend E2E tests (Playwright):
+
+```powershell
+cd frontend
+npm run test:e2e:install
+npm run test:e2e
+```
+
 Backend smoke test (starts backend temporarily and checks critical endpoints):
 
 ```powershell
@@ -232,7 +240,8 @@ It runs on every `push` and `pull_request` and includes:
 2. `pyflakes` (backend static checks)
 3. `vulture --min-confidence 80` (dead-code scan)
 4. `npm run build` (frontend build)
-5. `python scripts/smoke_backend.py` (temporary backend smoke test)
+5. `npm run test:e2e` (frontend Playwright flows)
+6. `python scripts/smoke_backend.py` (temporary backend smoke test)
 
 ## Common Issues
 

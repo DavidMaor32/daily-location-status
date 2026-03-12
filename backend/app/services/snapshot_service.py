@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+import json
 import logging
 import threading
 from contextlib import contextmanager
@@ -37,6 +38,7 @@ LOCATION_COLUMNS = ["location", "created_at"]
 LOCATION_EVENT_COLUMNS = [
     "event_id",
     "person_id",
+    "full_name",
     "event_type",
     "target_event_id",
     "is_voided",
@@ -135,7 +137,38 @@ class SnapshotService:
         self.ensure_master_people()
         self.ensure_locations_file()
         self.ensure_snapshot_for_date(date.today())
-        self.migrate_legacy_location_events()
+        self.migrate_legacy_location_events_once()
+
+    def migrate_legacy_location_events_once(self) -> dict:
+        """
+        Run legacy events migration once per storage backend using a marker key.
+
+        Re-running can still be done explicitly via `migrate_legacy_location_events()`.
+        """
+        with self._write_guard():
+            marker_key = self._legacy_location_events_migration_marker_key()
+            if self.storage.exists(marker_key):
+                return {
+                    "migration_ran": False,
+                    "marker_key": marker_key,
+                    "migrated_count": 0,
+                    "migrated_dates": [],
+                    "skipped_keys": [],
+                }
+
+            migration_result = self.migrate_legacy_location_events()
+            marker_payload = {
+                "checked_at": datetime.now(timezone.utc).isoformat(),
+                "migration_result": migration_result,
+            }
+            marker_bytes = json.dumps(marker_payload, ensure_ascii=False).encode("utf-8")
+            self.storage.write_bytes(marker_key, marker_bytes)
+
+            return {
+                "migration_ran": True,
+                "marker_key": marker_key,
+                **migration_result,
+            }
 
     def get_today_snapshot(self) -> dict:
         """Return today's full snapshot, creating it when missing."""
@@ -174,16 +207,33 @@ class SnapshotService:
             if not snapshot_exists and not legacy_events_exists:
                 raise NotFoundError(f"Snapshot does not exist for date {snapshot_date.isoformat()}")
 
+            snapshot_events_existed = False
+            if snapshot_exists:
+                try:
+                    _, snapshot_events_df, has_events_sheet = self._load_daily_workbook(snapshot_date)
+                    snapshot_events_existed = bool(has_events_sheet and not snapshot_events_df.empty)
+                except Exception:  # noqa: BLE001
+                    logger.warning(
+                        "Could not inspect location events before deleting snapshot %s",
+                        snapshot_date.isoformat(),
+                    )
+
             snapshot_deleted = self.storage.delete(snapshot_key) if snapshot_exists else False
             legacy_events_deleted = (
                 self.storage.delete(legacy_events_key) if legacy_events_exists else False
             )
-            events_deleted = bool(snapshot_deleted or legacy_events_deleted)
+            snapshot_events_deleted = bool(snapshot_deleted and snapshot_events_existed)
+            events_existed = bool(snapshot_events_existed or legacy_events_exists)
+            events_deleted = bool(snapshot_events_deleted or legacy_events_deleted)
 
             return {
                 "date": snapshot_date.isoformat(),
                 "snapshot_deleted": bool(snapshot_deleted),
+                "events_existed": bool(events_existed),
+                "snapshot_events_existed": bool(snapshot_events_existed),
+                "legacy_events_existed": bool(legacy_events_exists),
                 "events_deleted": bool(events_deleted),
+                "snapshot_events_deleted": bool(snapshot_events_deleted),
                 "snapshot_key": snapshot_key,
                 "events_key": f"{snapshot_key}#{DAILY_LOCATION_EVENTS_SHEET}",
                 "legacy_events_key": legacy_events_key,
@@ -335,6 +385,7 @@ class SnapshotService:
                 events_df=events_df,
                 snapshot_date=today,
                 person_id=person_id,
+                full_name=str(snapshot_df.at[row_index, "full_name"]),
                 event_type="move",
                 location=normalized_location,
                 daily_status=status_value,
@@ -344,7 +395,7 @@ class SnapshotService:
 
             self._apply_current_state_from_events(snapshot_df, row_index, person_id, events_df)
             snapshot_df = self._normalize_snapshot_df(snapshot_df, today)
-            self.save_snapshot(today, snapshot_df)
+            self._persist_daily_workbook(today, snapshot_df, events_df)
 
             warning = self._build_transition_warning(previous_move_event, created_event)
             return self._build_person_location_events_payload(
@@ -408,11 +459,10 @@ class SnapshotService:
 
             events_df = events_df[~events_df["event_id"].isin(removed_ids)].copy()
             events_df = self._normalize_location_events_df(events_df, today)
-            self.save_location_events(today, events_df)
 
             self._apply_current_state_from_events(snapshot_df, row_index, person_id, events_df)
             snapshot_df = self._normalize_snapshot_df(snapshot_df, today)
-            self.save_snapshot(today, snapshot_df)
+            self._persist_daily_workbook(today, snapshot_df, events_df)
 
             return self._build_person_location_events_payload(
                 person_id,
@@ -741,12 +791,14 @@ class SnapshotService:
 
             next_location = self._normalize_location(snapshot_df.at[row_index, "location"])
             next_daily_status = self._normalize_daily_status(snapshot_df.at[row_index, "daily_status"])
+            events_df_for_save: pd.DataFrame | None = None
             if next_location != previous_location:
                 events_df = self.load_location_events(today)
-                _, events_df = self._append_location_event(
+                _, events_df_for_save = self._append_location_event(
                     events_df=events_df,
                     snapshot_date=today,
                     person_id=person_id,
+                    full_name=str(snapshot_df.at[row_index, "full_name"]),
                     event_type="move",
                     location=next_location,
                     daily_status=next_daily_status,
@@ -756,7 +808,10 @@ class SnapshotService:
 
             snapshot_df.at[row_index, "last_updated"] = self._now_iso()
             snapshot_df = self._normalize_snapshot_df(snapshot_df, today)
-            self.save_snapshot(today, snapshot_df)
+            if events_df_for_save is not None:
+                self._persist_daily_workbook(today, snapshot_df, events_df_for_save)
+            else:
+                self.save_snapshot(today, snapshot_df)
 
             # Name changes are persisted in master list so new snapshots will include the updated name.
             if patch.get("full_name"):
@@ -820,12 +875,10 @@ class SnapshotService:
 
             deleted_row = snapshot_df.loc[matches[0]].copy()
             snapshot_df = snapshot_df[snapshot_df["person_id"] != person_id].copy()
-            snapshot_df = self._normalize_snapshot_df(snapshot_df, today)
-            self.save_snapshot(today, snapshot_df)
-
             events_df = self.load_location_events(today)
             events_df = events_df[events_df["person_id"] != person_id].copy()
-            self.save_location_events(today, events_df)
+            snapshot_df = self._normalize_snapshot_df(snapshot_df, today)
+            self._persist_daily_workbook(today, snapshot_df, events_df)
 
             master_df = self.load_master_people()
             master_df = master_df[master_df["person_id"] != person_id].copy()
@@ -860,8 +913,11 @@ class SnapshotService:
                         carry_self_report=True,
                     ),
                 )
-            self.save_snapshot(today, restored_df)
-            self.save_location_events(today, pd.DataFrame(columns=LOCATION_EVENT_COLUMNS))
+            self._persist_daily_workbook(
+                today,
+                restored_df,
+                pd.DataFrame(columns=LOCATION_EVENT_COLUMNS),
+            )
             logger.info(
                 "Restored snapshot from %s into %s (policy=%s)",
                 source_date.isoformat(),
@@ -939,8 +995,7 @@ class SnapshotService:
         clean_snapshot_df = self._normalize_snapshot_df(df, snapshot_date)
         with self._write_guard():
             events_df = self.load_location_events(snapshot_date)
-            self._write_daily_workbook(snapshot_date, clean_snapshot_df, events_df)
-            self._delete_legacy_location_events_file(snapshot_date)
+            self._persist_daily_workbook(snapshot_date, clean_snapshot_df, events_df)
 
     def load_location_events(self, snapshot_date: date) -> pd.DataFrame:
         """
@@ -968,8 +1023,7 @@ class SnapshotService:
         clean_events_df = self._normalize_location_events_df(df, snapshot_date)
         with self._write_guard():
             snapshot_df = self.load_snapshot(snapshot_date, create_if_missing=True)
-            self._write_daily_workbook(snapshot_date, snapshot_df, clean_events_df)
-            self._delete_legacy_location_events_file(snapshot_date)
+            self._persist_daily_workbook(snapshot_date, snapshot_df, clean_events_df)
 
     def ensure_master_people(self) -> pd.DataFrame:
         """Ensure master people file exists; bootstrap from seed if missing."""
@@ -1200,6 +1254,9 @@ class SnapshotService:
             (normalized["person_id"] != "")
             & (normalized["person_id"].str.lower() != "nan")
         ].copy()
+        normalized["full_name"] = normalized["full_name"].astype(str).map(
+            lambda value: "" if value.strip().lower() == "nan" else value.strip()
+        )
 
         normalized["event_type"] = normalized["event_type"].map(self._normalize_event_type)
         normalized["target_event_id"] = normalized["target_event_id"].astype(str).map(lambda x: x.strip() or "")
@@ -1221,6 +1278,42 @@ class SnapshotService:
         normalized = normalized.drop_duplicates(subset=["event_id"], keep="last")
         normalized = self._sort_location_events_df(normalized).reset_index(drop=True)
         return normalized
+
+    def _with_location_event_full_names(
+        self,
+        events_df: pd.DataFrame,
+        *,
+        snapshot_df: pd.DataFrame,
+        snapshot_date: date,
+    ) -> pd.DataFrame:
+        """
+        Ensure each location-event row has `full_name`.
+
+        Existing names are preserved; missing names are backfilled from snapshot person mapping.
+        """
+        normalized_events = self._normalize_location_events_df(events_df, snapshot_date)
+        if normalized_events.empty:
+            return normalized_events
+
+        people_source = self._normalize_snapshot_df(snapshot_df, snapshot_date)
+        full_name_by_id = {
+            str(item["person_id"]): str(item["full_name"]).strip()
+            for _, item in people_source.iterrows()
+        }
+
+        enriched = normalized_events.copy()
+        if "full_name" not in enriched.columns:
+            enriched["full_name"] = ""
+        enriched["full_name"] = enriched["full_name"].astype(str).map(
+            lambda item: "" if item.strip().lower() == "nan" else item.strip()
+        )
+        missing_mask = enriched["full_name"] == ""
+        if missing_mask.any():
+            enriched.loc[missing_mask, "full_name"] = (
+                enriched.loc[missing_mask, "person_id"].astype(str).map(full_name_by_id).fillna("")
+            )
+
+        return self._normalize_location_events_df(enriched, snapshot_date)
 
     def _normalize_snapshot_df(self, df: pd.DataFrame, snapshot_date: date) -> pd.DataFrame:
         """Validate and normalize snapshot dataframe structure and values."""
@@ -1342,6 +1435,11 @@ class SnapshotService:
         """Build storage key for one date legacy location-events workbook."""
         return f"{self._legacy_location_events_prefix()}/{snapshot_date.isoformat()}.xlsx"
 
+    def _legacy_location_events_migration_marker_key(self) -> str:
+        """Build storage key marker for one-time legacy events migration."""
+        prefix = self.settings.s3_snapshots_prefix.strip("/")
+        return f"{prefix}/_meta/legacy_location_events_migration_v1.done"
+
     def _load_daily_workbook(self, snapshot_date: date) -> tuple[pd.DataFrame, pd.DataFrame, bool]:
         """
         Load one daily workbook and return normalized snapshot/events dataframes.
@@ -1393,8 +1491,23 @@ class SnapshotService:
         """Persist snapshot + location-events into one daily workbook."""
         clean_snapshot_df = self._normalize_snapshot_df(snapshot_df, snapshot_date)
         clean_events_df = self._normalize_location_events_df(events_df, snapshot_date)
+        clean_events_df = self._with_location_event_full_names(
+            clean_events_df,
+            snapshot_df=clean_snapshot_df,
+            snapshot_date=snapshot_date,
+        )
         content = self._to_daily_workbook_bytes(clean_snapshot_df, clean_events_df)
         self.storage.write_bytes(self._snapshot_key(snapshot_date), content)
+
+    def _persist_daily_workbook(
+        self,
+        snapshot_date: date,
+        snapshot_df: pd.DataFrame,
+        events_df: pd.DataFrame,
+    ) -> None:
+        """Persist daily snapshot/events workbook and remove legacy sidecar events file."""
+        self._write_daily_workbook(snapshot_date, snapshot_df, events_df)
+        self._delete_legacy_location_events_file(snapshot_date)
 
     def _delete_legacy_location_events_file(self, snapshot_date: date) -> bool:
         """Delete one legacy events file when present (no-op when already absent)."""
@@ -1578,11 +1691,16 @@ class SnapshotService:
         }
 
         export_df = self._sort_location_events_df(events_source, descending=True).copy()
-        export_df.insert(
-            2,
-            "full_name",
-            export_df["person_id"].astype(str).map(full_name_by_id).fillna(""),
+        if "full_name" not in export_df.columns:
+            export_df["full_name"] = ""
+        export_df["full_name"] = export_df["full_name"].astype(str).map(
+            lambda item: "" if item.strip().lower() == "nan" else item.strip()
         )
+        missing_name_mask = export_df["full_name"] == ""
+        if missing_name_mask.any():
+            export_df.loc[missing_name_mask, "full_name"] = (
+                export_df.loc[missing_name_mask, "person_id"].astype(str).map(full_name_by_id).fillna("")
+            )
         export_df["event_type"] = export_df["event_type"].map(self._normalize_event_type)
         export_df["target_event_id"] = export_df["target_event_id"].astype(str).map(
             lambda item: item.strip() or ""
@@ -1980,6 +2098,7 @@ class SnapshotService:
         events_df: pd.DataFrame,
         snapshot_date: date,
         person_id: str,
+        full_name: str = "",
         event_type: str,
         target_event_id: str | None = None,
         location: str,
@@ -1987,7 +2106,7 @@ class SnapshotService:
         occurred_at: str,
         source: str = DEFAULT_EVENT_SOURCE,
     ) -> tuple[dict, pd.DataFrame]:
-        """Append one location event row and return created record plus updated dataframe."""
+        """Build updated location-events dataframe with one appended row (no storage write)."""
         normalized_events = self._normalize_location_events_df(events_df, snapshot_date)
         normalized_event_type = str(event_type).strip().lower()
         if normalized_event_type not in VALID_EVENT_TYPES:
@@ -2009,6 +2128,7 @@ class SnapshotService:
         new_row = {
             "event_id": event_id,
             "person_id": person_id,
+            "full_name": str(full_name).strip(),
             "event_type": normalized_event_type,
             "target_event_id": normalized_target_event_id,
             "is_voided": False,
@@ -2026,7 +2146,6 @@ class SnapshotService:
             ignore_index=True,
         )
         combined_df = self._normalize_location_events_df(combined_df, snapshot_date)
-        self.save_location_events(snapshot_date, combined_df)
 
         created_row = combined_df.loc[combined_df["event_id"] == event_id].iloc[0]
         return self._event_row_to_record(created_row), combined_df
