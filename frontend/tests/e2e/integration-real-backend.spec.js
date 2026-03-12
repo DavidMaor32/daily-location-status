@@ -1,3 +1,6 @@
+// End-to-end integration tests executed against a real backend instance.
+// Responsibility: validate UI-to-backend integration behavior under realistic runtime conditions.
+
 import { expect, test } from "@playwright/test";
 
 test("real backend: tracking add and undo work", async ({ page }) => {

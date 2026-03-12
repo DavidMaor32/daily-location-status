@@ -151,7 +151,7 @@ def decode_one_pass(data: bytes) -> bytes:
     return bytes(result)
 
 
-# Test on known PersonFormModal "בבית"
+# Test on known PersonFormModal home-location value ("home")
 corrupted_bivit = b'\xd7\xb3\xe2\x80\x98\xd7\xb3\xe2\x80\x98\xd7\xb3\xe2\x84\xa2\xd7\xb3\xc3\x97'
 decoded1 = decode_one_pass(corrupted_bivit)
 print(f"PersonFormModal 'בבית' corrupted decode: {decoded1} = {decoded1.decode('utf-8', errors='replace')}")

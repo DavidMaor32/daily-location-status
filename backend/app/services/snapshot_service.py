@@ -1,4 +1,9 @@
-﻿from __future__ import annotations
+"""Core snapshot domain service handling people state, location events, and date history.
+
+Responsibility: enforce business rules and coordinate persistence across storage providers.
+"""
+
+from __future__ import annotations
 
 import json
 import logging

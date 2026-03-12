@@ -1,3 +1,8 @@
+"""Shared pytest fixtures and test wiring used by backend API/service test modules.
+
+Responsibility: centralize reusable setup logic to keep tests consistent and isolated.
+"""
+
 from __future__ import annotations
 
 import sys

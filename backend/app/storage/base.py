@@ -1,3 +1,8 @@
+"""Storage abstraction contracts shared by service and provider implementations.
+
+Responsibility: define the backend-agnostic API used by snapshot workflows.
+"""
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod

@@ -1,3 +1,8 @@
+"""Resilience guard tests for startup/runtime safeguards and failure handling paths.
+
+Responsibility: ensure defensive behavior stays stable under invalid state and fault scenarios.
+"""
+
 from __future__ import annotations
 
 import time

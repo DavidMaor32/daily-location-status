@@ -1,3 +1,8 @@
+"""API route tests for request validation, response contracts, and snapshot endpoints.
+
+Responsibility: protect HTTP behavior and integration expectations exposed to clients.
+"""
+
 from __future__ import annotations
 
 from datetime import date, timedelta

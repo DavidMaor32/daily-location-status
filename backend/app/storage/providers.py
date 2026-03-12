@@ -1,3 +1,8 @@
+"""Storage provider implementations and adapter glue for local, S3, and dual modes.
+
+Responsibility: expose concrete IO backends behind a unified storage interface.
+"""
+
 from __future__ import annotations
 
 import logging

@@ -1,3 +1,8 @@
+"""SnapshotService behavior tests for snapshot lifecycle, status updates, and tracking timelines.
+
+Responsibility: validate core backend domain rules and regression-prone edge cases.
+"""
+
 from __future__ import annotations
 
 from datetime import date, timedelta

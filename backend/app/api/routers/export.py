@@ -1,3 +1,8 @@
+"""Export API routes for generating and downloading day/range snapshot workbooks.
+
+Responsibility: expose HTTP endpoints for Excel export workflows consumed by the frontend.
+"""
+
 from __future__ import annotations
 
 from datetime import date

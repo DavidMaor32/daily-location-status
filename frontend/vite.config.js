@@ -1,3 +1,6 @@
+// Vite build and dev-server configuration for the frontend project.
+// Responsibility: define bundling behavior and runtime settings used during development/build.
+
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import fs from "node:fs";

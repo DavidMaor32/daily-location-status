@@ -1,3 +1,8 @@
+"""Telegram bot integration service for conversational self-report collection and updates.
+
+Responsibility: translate chat interactions into validated snapshot updates and user feedback.
+"""
+
 from __future__ import annotations
 
 import json

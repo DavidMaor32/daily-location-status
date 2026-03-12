@@ -1,3 +1,6 @@
+// Top-level application page that coordinates data loading, filters, modals, and actions.
+// Responsibility: own the primary UI state machine and orchestrate user workflows end-to-end.
+
 import { useEffect, useMemo, useState } from "react";
 
 import {

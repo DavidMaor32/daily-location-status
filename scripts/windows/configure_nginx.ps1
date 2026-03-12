@@ -1,3 +1,6 @@
+# Configures nginx files used by the local production deployment.
+# Responsibility: enforce consistent reverse-proxy routing and static file serving settings.
+
 param(
     [int]$NginxPort = 80,
     [string]$BackendHost = "127.0.0.1",

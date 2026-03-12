@@ -1,3 +1,8 @@
+"""One-off utility that rewrites PersonTrackingModal.jsx with corrected Hebrew UI strings.
+
+Responsibility: regenerate modal source content during manual recovery/debug workflows.
+"""
+
 import os
 
 filepath = 'frontend/src/components/PersonTrackingModal.jsx'

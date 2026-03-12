@@ -1,3 +1,6 @@
+# End-to-end test configuration for isolated app and backend execution.
+# Responsibility: provide deterministic runtime settings used by automated E2E flows.
+
 app:
   name: "Daily Status Manager API (E2E)"
   environment: "development"

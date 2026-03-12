@@ -1,3 +1,8 @@
+"""Configuration loading tests for YAML defaults and environment variable overrides.
+
+Responsibility: verify settings parsing remains deterministic across environments.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path

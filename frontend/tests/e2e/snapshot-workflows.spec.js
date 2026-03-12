@@ -1,3 +1,6 @@
+// End-to-end tests for main snapshot management flows in the UI.
+// Responsibility: verify user-critical workflows across list, edit, and save operations.
+
 import { expect, test } from "@playwright/test";
 
 function toDateString(value) {

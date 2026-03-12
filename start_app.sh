@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# App startup wrapper for Windows environments using Git Bash.
+# Responsibility: provide a single command entrypoint for launching the app in production mode.
+
 set -euo pipefail
 
 # ------------------------------------------------------------

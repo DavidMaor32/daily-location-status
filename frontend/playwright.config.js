@@ -1,3 +1,6 @@
+// Playwright test runner configuration for frontend end-to-end scenarios.
+// Responsibility: define browser targets, retries, timeouts, and test environment behavior.
+
 import { defineConfig } from "@playwright/test";
 
 export default defineConfig({

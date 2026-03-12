@@ -1,3 +1,8 @@
+"""File lock utility for safe concurrent access to local storage files.
+
+Responsibility: serialize critical read/write sections to prevent data corruption.
+"""
+
 from __future__ import annotations
 
 import os

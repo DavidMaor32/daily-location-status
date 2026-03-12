@@ -1,3 +1,6 @@
+# Stops the local production stack processes and releases bound ports.
+# Responsibility: provide safe and repeatable shutdown/cleanup for Windows production scripts.
+
 param(
     [int]$BackendPort = 8000,
     [string]$NginxDir = ""

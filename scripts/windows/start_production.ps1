@@ -1,3 +1,6 @@
+# Starts the full local production stack (backend, frontend static assets, and nginx).
+# Responsibility: orchestrate reproducible production-like startup on Windows.
+
 param(
     [int]$BackendPort = 8000,
     [int]$NginxPort = 80,
