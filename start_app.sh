@@ -1,3 +1,5 @@
+#TODO make the script cross platform
+#TODO dockerize with docker-compose.yaml to easily run locally and deploy.
 #!/usr/bin/env bash
 # App startup wrapper for Windows environments using Git Bash.
 # Responsibility: provide a single command entrypoint for launching the app in production mode.
@@ -12,7 +14,7 @@ set -euo pipefail
 # - Includes prerequisite checks and optional auto-install on Windows.
 # ------------------------------------------------------------
 # cd C:\Users\avish\OneDrive\Desktop\app & "C:\Program Files\Git\bin\bash.exe" .\start_app.sh --prod
-
+#TODO extract to .env file 
 MODE="dev"
 SKIP_INSTALL="false"
 SKIP_PREREQ_CHECK="false"

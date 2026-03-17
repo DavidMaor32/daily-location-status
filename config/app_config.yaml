@@ -2,7 +2,7 @@
 # Main application configuration (loaded at backend startup)
 # All non-secret settings are centralized in this YAML file
 # ------------------------------------------------------------
-
+# TODO config with env (and maybe add .env.example)
 app:
   name: "Daily Status Manager API" # Service display/logging name | Example: "Daily Status Manager API"
   environment: "development" # Runtime environment | Example: "development" / "production"
