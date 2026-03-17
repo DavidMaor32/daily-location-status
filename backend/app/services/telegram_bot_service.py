@@ -5,6 +5,7 @@ Responsibility: translate chat interactions into validated snapshot updates and 
 
 from __future__ import annotations
 
+import ssl
 import json
 import logging
 import threading
@@ -774,7 +775,9 @@ class TelegramBotService:
         )
         timeout = max(10, self.settings.telegram_poll_timeout_seconds + 5)
         try:
-            with urlopen(request, timeout=timeout) as response:  # noqa: S310
+            #TODO for dev purpose, disabled ssl
+            ssl_context = ssl._create_unverified_context()
+            with urlopen(request, timeout=timeout, context=ssl_context) as response:  # noqa: S310
                 raw = response.read().decode("utf-8")
                 return json.loads(raw)
         except HTTPError as exc:
