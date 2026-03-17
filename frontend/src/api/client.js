@@ -1,13 +1,17 @@
+//TODO use Typescript
+//TODO use arrow functions
+//TODO use axios for http request (maybe use React Query in components)
 // Frontend API client: centralizes HTTP calls, endpoints, and date helpers.
 
 // Value is injected by Vite from config/app_config.yaml (frontend.api_base_url).
-const API_BASE_URL = __API_BASE_URL__ || "";
+const API_BASE_URL = __API_BASE_URL__ || ""; //TODO: convince me to keep it.
 
 function buildApiUrl(path) {
   return `${API_BASE_URL}${path}`;
 }
 
 // Generic JSON request helper with centralized error handling.
+//TODO use axios
 async function apiRequest(path, options = {}) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
@@ -19,6 +23,7 @@ async function apiRequest(path, options = {}) {
 
   if (!response.ok) {
     const errorBody = await response.json().catch(() => ({}));
+    //TODO error types, in a seperate file.
     throw new Error(errorBody.detail || "שגיאה בתקשורת עם השרת");
   }
 
@@ -27,16 +32,19 @@ async function apiRequest(path, options = {}) {
 }
 
 // Load today's snapshot from backend.
+//TODO: use axios
 export function fetchTodaySnapshot() {
   return apiRequest("/api/snapshot/today");
 }
 
 // Load snapshot for a specific date.
+//TODO: use axios
 export function fetchSnapshotByDate(snapshotDate) {
   return apiRequest(`/api/snapshot/${snapshotDate}`);
 }
 
 // Force-save selected snapshot file (explicit save action).
+//TODO: use axios
 export function saveSnapshotNow(snapshotDate) {
   return apiRequest(`/api/snapshot/${snapshotDate}/save`, {
     method: "POST",
@@ -44,6 +52,7 @@ export function saveSnapshotNow(snapshotDate) {
 }
 
 // Delete selected snapshot date file (and matching tracking-events file).
+//TODO: use axios
 export function deleteSnapshotDate(snapshotDate) {
   return apiRequest(`/api/snapshot/${snapshotDate}`, {
     method: "DELETE",
@@ -60,6 +69,7 @@ export function downloadDaySnapshot(snapshotDate) {
 
 // Download all snapshot xlsx files between date_from and date_to as zip.
 export function downloadRangeSnapshots(dateFrom, dateTo) {
+  //TODO maybe use URLSearchParams instead of string template
   const query = `date_from=${encodeURIComponent(dateFrom)}&date_to=${encodeURIComponent(
     dateTo
   )}`;
@@ -144,7 +154,7 @@ export function fetchPersonLocationEvents(
   snapshotDate,
   options = {}
 ) {
-  const params = new URLSearchParams();
+  const params = new URLSearchParams(); //TODO: good, i like.
   if (snapshotDate) {
     params.set("snapshot_date", snapshotDate);
   }
@@ -191,6 +201,7 @@ export function restoreHistoryToToday(snapshotDate) {
 }
 
 // Return local-date string in YYYY-MM-DD format.
+//TODO just use momentjs
 export function getTodayString() {
   const now = new Date();
   const year = now.getFullYear();

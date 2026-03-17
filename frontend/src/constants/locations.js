@@ -1,4 +1,5 @@
 // Default locations used when locations Excel file is created.
+//TODO Typescript
 const HOME_LOCATION = "בבית";
 const LOCATION_1 = "מיקום 1";
 const LOCATION_2 = "מיקום 2";
@@ -26,6 +27,7 @@ export const LOCATION_CLASS_BY_VALUE = {
 };
 
 // Trim and normalize location text before sending to backend.
+//TODO just trim, why extra function?
 export function normalizeLocationName(rawName) {
   return (rawName || "").trim();
 }

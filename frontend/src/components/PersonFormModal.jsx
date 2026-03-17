@@ -1,5 +1,7 @@
 // Modal component for adding/editing one person in today's snapshot.
-
+//TODO use Typescript
+//TODO use arrow functions
+//TODO maybe use react query instead of states and useEffect
 import { useEffect, useState } from "react";
 import {
   DAILY_STATUS_BAD,
@@ -8,6 +10,7 @@ import {
 } from "../constants/statuses";
 
 // Modal form used for both add-person and edit-person actions.
+//TODO extract props interface
 function PersonFormModal({
   open,
   mode,

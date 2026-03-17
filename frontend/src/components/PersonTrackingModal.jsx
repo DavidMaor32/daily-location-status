@@ -1,5 +1,5 @@
 // Modal component for per-person location event tracking and undo workflow.
-
+//TODO: Typescript, arrow functions
 import { useEffect, useMemo, useState } from "react";
 import { getLocationChipClass } from "../constants/locations";
 import {
@@ -9,6 +9,7 @@ import {
   getDailyStatusChipClass,
 } from "../constants/statuses";
 
+//TODO same as PersonTable.jsx
 function toLocalDateTimeInput(value) {
   const parsed = value ? new Date(value) : new Date();
   if (Number.isNaN(parsed.getTime())) {
@@ -22,6 +23,7 @@ function toLocalDateTimeInput(value) {
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
+//TODO extract to utils file
 function toUtcIsoFromLocalInput(value) {
   if (!value) {
     return undefined;
@@ -33,6 +35,7 @@ function toUtcIsoFromLocalInput(value) {
   return parsed.toISOString();
 }
 
+//TODO extract to utils file
 function formatEventTimestamp(value) {
   if (!value) {
     return "-";
@@ -52,6 +55,7 @@ function formatEventTimestamp(value) {
   });
 }
 
+//TODO extract to utils file
 function formatEventType(eventType) {
   if (eventType === "undo") {
     return "ביטול";
@@ -140,6 +144,7 @@ function PersonTrackingModal({
           <div className="tracking-warning">{latestTransitionWarning}</div>
         ) : null}
 
+        {/* extract modal to component */}
         {!readOnly ? (
           <form className="modal-form tracking-form" onSubmit={handleSubmit}>
             <label>
@@ -220,6 +225,7 @@ function PersonTrackingModal({
           {safeEvents.length === 0 ? (
             <div className="muted-text">אין אירועי מיקום למזהה זה בתאריך שנבחר.</div>
           ) : (
+            // extract to component
             safeEvents.map((item) => {
               const transition = transitionByToEventId.get(String(item.event_id));
               return (

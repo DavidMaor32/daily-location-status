@@ -41,6 +41,7 @@ import {
   DAILY_STATUS_OK,
 } from "./constants/statuses";
 
+//TODO extraact constants to file
 const AUTO_REFRESH_MS = 5000;
 const UNDO_WINDOW_SECONDS = 15;
 const SUSPICIOUS_TRANSITION_SECONDS = 120;
@@ -55,6 +56,7 @@ const DEFAULT_SYSTEM_STATUS = {
 };
 
 // Normalize backend system status payload so UI stays stable if fields are missing.
+//TODO payload type
 function normalizeSystemStatus(payload) {
   return {
     ...DEFAULT_SYSTEM_STATUS,
@@ -65,6 +67,7 @@ function normalizeSystemStatus(payload) {
   };
 }
 
+//TODO extract to a util file
 // Convert unknown thrown value into a stable UI error message.
 function getErrorMessage(error, fallbackMessage) {
   if (error instanceof Error && error.message) {
@@ -865,6 +868,7 @@ function App() {
             >
               טען תאריך
             </button>
+            {/* TODO extract button disabled to a variable and maybe extract buttons to a component */}
             <button
               className="btn btn-primary"
               onClick={handleDownloadDayFile}
@@ -903,6 +907,7 @@ function App() {
         </div>
       </header>
 
+    {/* TODO yeah uhmm lets break it into components like filters and such */}
       <section className="toolbar-card">
         <div className="filter-group compact-filter-group">
           <label>חיפוש לפי שם</label>
@@ -1127,6 +1132,7 @@ function App() {
             trackingLastActionType === "move" &&
             undoSecondsLeft > 0
         )}
+        //TODO extract callback function
         onClose={() => {
           if (trackingLoading || actionLoading) {
             return;

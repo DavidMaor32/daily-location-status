@@ -1,4 +1,5 @@
 // Central status values used across the frontend.
+//TODO could be string type
 export const DAILY_STATUS_OK = "תקין";
 export const DAILY_STATUS_BAD = "לא תקין";
 export const DAILY_STATUS_MISSING = "לא הוזן";

@@ -1,5 +1,5 @@
 // Utility helpers for normalizing backend payloads and UI-facing errors.
-
+//TODO
 const DEFAULT_SYSTEM_STATUS = {
   server_date: null,
   server_time_utc: null,
@@ -34,6 +34,7 @@ export function normalizeSystemStatus(payload) {
   };
 }
 
+//TODO extract error logic to util file
 // Convert unknown thrown value into a stable UI error message.
 export function getErrorMessage(error, fallbackMessage) {
   if (error instanceof Error && error.message) {

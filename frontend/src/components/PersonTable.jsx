@@ -1,5 +1,5 @@
 // Main people table with quick status/location actions and per-row operations.
-
+//TODO use Typescript
 import { getLocationChipClass } from "../constants/locations";
 import {
   DAILY_STATUS_BAD,
@@ -9,6 +9,8 @@ import {
 } from "../constants/statuses";
 
 // Convert backend ISO timestamp into friendly Hebrew date-time.
+//TODO just use momentjs
+//TODO extract to utils file
 function formatTimestamp(value) {
   if (!value) {
     return "-";
@@ -29,6 +31,7 @@ function formatTimestamp(value) {
 }
 
 // Return status quick-button classes with color + selected state.
+//TODO maybe use clsx for css class manipulation
 function getStatusQuickButtonClass(targetStatus, currentStatus) {
   let activeClass = "";
   if (targetStatus === DAILY_STATUS_OK) {
@@ -44,6 +47,7 @@ function getStatusQuickButtonClass(targetStatus, currentStatus) {
 }
 
 // Render the main people table with quick actions for status/location updates.
+//TODO extract props interface
 function PersonTable({
   people,
   locationOptions,
@@ -87,6 +91,7 @@ function PersonTable({
               </td>
             </tr>
           ) : (
+            // TODO extract component
             people.map((person) => (
               <tr key={person.person_id}>
                 <td>{person.full_name}</td>
