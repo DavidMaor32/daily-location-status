@@ -13,6 +13,7 @@ frontend/playwright-report/
 frontend/test-results/
 
 # Runtime storage files
+backend-node/node_modules
 backend/local_storage/
 backend/e2e_storage/
 
