@@ -1,5 +1,4 @@
 // Utility helpers for normalizing backend payloads and UI-facing errors.
-//TODO
 const DEFAULT_SYSTEM_STATUS = {
   server_date: null,
   server_time_utc: null,
