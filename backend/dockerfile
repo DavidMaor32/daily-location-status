@@ -11,16 +11,19 @@ WORKDIR /app
 ARG UID=10001
 RUN adduser --disabled-password --gecos "" --home "/nonexistent" --shell "/sbin/nologin" --no-create-home --uid "${UID}" appuser
 
-# התקנה עם Cache לביצועים
+# בגלל שה-Context הוא השורש, אנחנו צריכים להצביע לנתיב המלא של הדרישות
 RUN --mount=type=cache,target=/root/.cache/pip \
-    --mount=type=bind,source=requirements.txt,target=requirements.txt \
+    --mount=type=bind,source=backend/requirements.txt,target=requirements.txt \
     python -m pip install -r requirements.txt
 
-# העתקה עם הרשאות למשתמש
-COPY --chown=appuser:appuser . .
+# העתקת תיקיית ה-backend לתוך /app בקונטיינר
+COPY --chown=appuser:appuser backend/ .
+
+# העתקת תיקיית ה-config (כדי שהבאקנד יוכל לקרוא את ה-YAMLים)
+COPY --chown=appuser:appuser config/ /app/config/
 
 USER appuser
 EXPOSE 8000
 
-# חשוב: host 0.0.0.0 כדי לאפשר גישה מבחוץ לקונטיינר
+# הרצה - וודא ש-app/main.py קיים בתוך תיקיית backend
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

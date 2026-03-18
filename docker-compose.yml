@@ -1,8 +1,8 @@
-version: '3.8'
-
 services:
   backend:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: daily-status-api
     restart: always
     env_file: .env
@@ -14,7 +14,7 @@ services:
 
   frontend:
     build:
-      context: .              # הנקודה אומרת "תסתכל על כל הפרויקט"
+      context: .
       dockerfile: frontend/Dockerfile
     container_name: daily-status-ui
     ports:
@@ -24,3 +24,11 @@ services:
     restart: always
     networks:
       - daily_network
+
+# זה החלק שהיה חסר וגרם לשגיאה:
+networks:
+  daily_network:
+    driver: bridge
+
+volumes:
+  pgdata:
