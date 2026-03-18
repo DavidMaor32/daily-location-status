@@ -1,0 +1,29 @@
+{
+//   "compilerOptions": {
+//     "target": "ES2022",
+//     "module": "commonjs",
+//     // "moduleResolution": "NodeNext",
+//     "rootDir": "./src",
+//     "outDir": "./dist",
+//     "allowJs": true,
+//     "checkJs": false,
+//     "strict": false,
+//     "esModuleInterop": true,
+//     "skipLibCheck": true,
+//     "resolveJsonModule": true,
+//     "types": ["node"]
+//   },
+//   "include": ["./src/**/*"],
+//   "exclude": ["node_modules", "dist"]
+"compilerOptions": {
+      "typeRoots": ["./node_modules/@types", "./src/utils"],
+      "target": "ES2020",
+      "module": "commonjs",
+      "outDir": "./dist",
+      "rootDir": "./src",
+      "strict": true,
+      "esModuleInterop": true
+    },
+    "include": ["./src/**/*.ts", "./src/utils/**/*.ts"],
+    "exclude": ["node_modules", "dist"]
+}
