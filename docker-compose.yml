@@ -13,7 +13,9 @@ services:
       - daily_network
 
   frontend:
-    build: ./frontend
+    build:
+      context: .              # הנקודה אומרת "תסתכל על כל הפרויקט"
+      dockerfile: frontend/Dockerfile
     container_name: daily-status-ui
     ports:
       - "${HOST_PORT:-80}:80"
@@ -22,7 +24,3 @@ services:
     restart: always
     networks:
       - daily_network
-
-networks:
-  daily_network:
-    driver: bridge
