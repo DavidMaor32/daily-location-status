@@ -12,6 +12,7 @@ frontend/dist/
 frontend/playwright-report/
 frontend/test-results/
 backend-node/node_modules/
+backend-node/dist
 
 # Runtime storage files
 backend/local_storage/
