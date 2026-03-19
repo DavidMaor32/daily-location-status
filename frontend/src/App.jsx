@@ -42,10 +42,10 @@ import {
 } from "./constants/locations";
 import {
   DEFAULT_SYSTEM_STATUS,
-  getErrorMessage,
   normalizeSnapshotPayload,
   normalizeSystemStatus,
 } from "./utils/appPayloads";
+import { getErrorMessage } from "./utils/errors";
 
 // Main page component for daily status and location management.
 function App() {
