@@ -1,12 +1,12 @@
 // Default locations used when locations Excel file is created.
-const HOME_LOCATION = "בבית";
-const LOCATION_1 = "מיקום 1";
-const LOCATION_2 = "מיקום 2";
-const LOCATION_3 = "מיקום 3";
-const LOCATION_4 = "מיקום 4";
-const LOCATION_5 = "מיקום 5";
+const HOME_LOCATION: string = "בבית";
+const LOCATION_1: string = "מיקום 1";
+const LOCATION_2: string= "מיקום 2";
+const LOCATION_3: string = "מיקום 3";
+const LOCATION_4: string= "מיקום 4";
+const LOCATION_5: string= "מיקום 5";
 
-export const DEFAULT_LOCATION_OPTIONS = [
+export const DEFAULT_LOCATION_OPTIONS: string[] = [
   HOME_LOCATION,
   LOCATION_1,
   LOCATION_2,

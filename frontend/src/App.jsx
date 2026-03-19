@@ -38,7 +38,6 @@ import {
 } from "./constants/app";
 import {
   DEFAULT_LOCATION_OPTIONS,
-  normalizeLocationName,
   uniqueLocations,
 } from "./constants/locations";
 import {
