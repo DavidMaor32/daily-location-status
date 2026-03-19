@@ -26,86 +26,26 @@ import {
   deleteSnapshotDate,
   replacePerson,
   restoreHistoryToToday,
-} from "./api/client";
+} from "./api/client.ts";
 import PersonFormModal from "./components/PersonFormModal";
+import AppToolbar from "./components/AppToolbar";
 import PersonTrackingModal from "./components/PersonTrackingModal";
 import PersonTable from "./components/PersonTable";
 import {
-  DEFAULT_LOCATION_OPTIONS,
-  normalizeLocationName,
-  uniqueLocations,
-} from "./constants/locations";
+  AUTO_REFRESH_MS,
+  SUSPICIOUS_TRANSITION_SECONDS,
+  UNDO_WINDOW_SECONDS,
+} from "./constants/app";
 import {
-  DAILY_STATUS_BAD,
-  DAILY_STATUS_MISSING,
-  DAILY_STATUS_OK,
-} from "./constants/statuses";
-
-const AUTO_REFRESH_MS = 5000;
-const UNDO_WINDOW_SECONDS = 15;
-const SUSPICIOUS_TRANSITION_SECONDS = 120;
-const DEFAULT_SYSTEM_STATUS = {
-  telegram_enabled: false,
-  telegram_configured: false,
-  telegram_running: false,
-  telegram_healthy: false,
-  telegram_active: false,
-  telegram_message: "בוט טלגרם לא פעיל",
-  telegram_last_error: null,
-};
-
-// Normalize backend system status payload so UI stays stable if fields are missing.
-function normalizeSystemStatus(payload) {
-  return {
-    ...DEFAULT_SYSTEM_STATUS,
-    ...(payload || {}),
-    telegram_active: Boolean(payload?.telegram_active),
-    telegram_message:
-      payload?.telegram_message || DEFAULT_SYSTEM_STATUS.telegram_message,
-  };
-}
-
-// Convert unknown thrown value into a stable UI error message.
-function getErrorMessage(error, fallbackMessage) {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-  if (typeof error === "string" && error.trim()) {
-    return error;
-  }
-  if (typeof error?.detail === "string" && error.detail.trim()) {
-    return error.detail;
-  }
-  return fallbackMessage;
-}
-
-// Normalize snapshot payload so corrupted/missing fields will not break UI rendering.
-function normalizeSnapshotPayload(payload, fallbackDate) {
-  const safeDate =
-    typeof payload?.date === "string" && payload.date ? payload.date : fallbackDate;
-  const rawPeople = Array.isArray(payload?.people) ? payload.people : [];
-
-  const normalizedPeople = rawPeople
-    .filter((item) => item && typeof item === "object")
-    .map((person) => ({
-      person_id: String(person.person_id || ""),
-      full_name: String(person.full_name || ""),
-      location: String(person.location || ""),
-      daily_status: String(person.daily_status || ""),
-      self_location: person.self_location ? String(person.self_location) : "",
-      self_daily_status: person.self_daily_status
-        ? String(person.self_daily_status)
-        : "",
-      notes: person.notes ? String(person.notes) : "",
-      last_updated: person.last_updated ? String(person.last_updated) : "",
-      date: typeof person.date === "string" && person.date ? person.date : safeDate,
-    }));
-
-  return {
-    date: safeDate,
-    people: normalizedPeople,
-  };
-}
+  DEFAULT_LOCATION_OPTIONS,
+  uniqueLocations,
+} from "./constants/locations.ts";
+import {
+  DEFAULT_SYSTEM_STATUS,
+  normalizeSnapshotPayload,
+  normalizeSystemStatus,
+} from "./utils/appPayloads";
+import { getErrorMessage } from "./utils/errors.ts";
 
 // Main page component for daily status and location management.
 function App() {
@@ -157,6 +97,14 @@ function App() {
   const deletableLocationOptions = useMemo(() => {
     return locationOptions.filter((location) => location !== homeLocation);
   }, [locationOptions, homeLocation]);
+  const canLoadSelectedDate = Boolean(selectedDate) && !loading;
+  const canDownloadSelectedDate = Boolean(selectedDate) && !loading && !actionLoading;
+  const canRunReadOnlyDateAction = !actionLoading;
+  const canAddLocation = !actionLoading;
+  const canChooseLocationToDelete =
+    deletableLocationOptions.length > 0 && !actionLoading;
+  const canDeleteLocation =
+    !actionLoading && deletableLocationOptions.length > 0 && Boolean(locationToDelete);
 
   const filteredPeople = useMemo(() => {
     return snapshot.people
@@ -195,14 +143,7 @@ function App() {
       (item) => item.person_id === trackingPerson.person_id
     );
     if (!refreshedPerson) {
-      setTrackingModalOpen(false);
-      setTrackingPerson(null);
-      setTrackingEvents([]);
-      setTrackingTransitions([]);
-      setTrackingLastActionEventId("");
-      setTrackingLastActionType("");
-      setLatestTransitionWarning("");
-      setUndoExpiresAtMs(0);
+      resetTrackingModalState();
       return;
     }
     setTrackingPerson(refreshedPerson);
@@ -429,6 +370,25 @@ function App() {
     setUndoExpiresAtMs(0);
     setTrackingModalOpen(true);
     loadTrackingEvents(person.person_id, snapshot.date);
+  }
+
+  function resetTrackingModalState() {
+    setTrackingModalOpen(false);
+    setTrackingPerson(null);
+    setTrackingEvents([]);
+    setTrackingTransitions([]);
+    setTrackingLastActionEventId("");
+    setTrackingLastActionType("");
+    setLatestTransitionWarning("");
+    setUndoExpiresAtMs(0);
+  }
+
+  function handleCloseTrackingModal() {
+    if (trackingLoading || actionLoading) {
+      return;
+    }
+
+    resetTrackingModalState();
   }
 
   async function handleAddTrackingEvent(payload) {
@@ -814,14 +774,7 @@ function App() {
     setError("");
     try {
       await deleteSnapshotDate(targetDate);
-      setTrackingModalOpen(false);
-      setTrackingPerson(null);
-      setTrackingEvents([]);
-      setTrackingTransitions([]);
-      setTrackingLastActionEventId("");
-      setTrackingLastActionType("");
-      setLatestTransitionWarning("");
-      setUndoExpiresAtMs(0);
+      resetTrackingModalState();
       await loadSelectedDate(todayString);
       window.alert(`התאריך ${targetDate} נמחק בהצלחה.`);
     } catch (err) {
@@ -861,21 +814,21 @@ function App() {
               className="btn btn-primary"
               data-testid="load-date-button"
               onClick={() => loadSelectedDate(selectedDate)}
-              disabled={loading || !selectedDate}
+              disabled={!canLoadSelectedDate}
             >
               טען תאריך
             </button>
             <button
               className="btn btn-primary"
               onClick={handleDownloadDayFile}
-              disabled={loading || actionLoading || !selectedDate}
+              disabled={!canDownloadSelectedDate}
             >
               הורד אקסל ליום
             </button>
             <button
               className="btn btn-primary"
               onClick={handleManualSaveExcel}
-              disabled={loading || actionLoading || !selectedDate}
+              disabled={!canDownloadSelectedDate}
             >
               שמור אקסל
             </button>
@@ -886,7 +839,7 @@ function App() {
               <button
                 className="btn btn-warning"
                 onClick={handleRestoreHistory}
-                disabled={actionLoading}
+                disabled={!canRunReadOnlyDateAction}
               >
                 שחזר ליום הנוכחי
               </button>
@@ -894,7 +847,7 @@ function App() {
                 className="btn btn-danger"
                 data-testid="delete-date-button"
                 onClick={handleDeleteDate}
-                disabled={actionLoading}
+                disabled={!canRunReadOnlyDateAction}
               >
                 מחק תאריך
               </button>
@@ -902,156 +855,42 @@ function App() {
           ) : null}
         </div>
       </header>
-
-      <section className="toolbar-card">
-        <div className="filter-group compact-filter-group">
-          <label>חיפוש לפי שם</label>
-          <input
-            placeholder="הקלד שם..."
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
-          />
-        </div>
-
-        <div className="filter-group compact-filter-group">
-          <label>פילטר מיקום</label>
-          <select
-            value={locationFilter}
-            onChange={(event) => setLocationFilter(event.target.value)}
-          >
-            <option value="all">הכול</option>
-            {configuredLocationOptions.map((location) => (
-              <option key={location} value={location}>
-                {location}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="filter-group compact-filter-group">
-          <label>פילטר סטטוס</label>
-          <select
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value)}
-          >
-            <option value="all">הכול</option>
-            <option value={DAILY_STATUS_OK}>תקין</option>
-            <option value={DAILY_STATUS_BAD}>לא תקין</option>
-            <option value={DAILY_STATUS_MISSING}>לא הוזן</option>
-          </select>
-        </div>
-
-        <div className="filter-group location-add-group">
-          <label>הוספת מיקום</label>
-          <div className="location-add-row">
-            <input
-              placeholder={'לדוגמה: "מיקום 6"'}
-              value={newLocationName}
-              onChange={(event) => setNewLocationName(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  handleAddLocation();
-                }
-              }}
-            />
-            <button
-              className="btn btn-secondary"
-              onClick={handleAddLocation}
-              disabled={actionLoading}
-            >
-              הוסף מיקום
-            </button>
-          </div>
-          <div className="location-remove-row">
-            <select
-              value={locationToDelete}
-              onChange={(event) => setLocationToDelete(event.target.value)}
-              disabled={deletableLocationOptions.length === 0 || actionLoading}
-            >
-              {deletableLocationOptions.length === 0 ? (
-                <option value="">אין מיקומים למחיקה</option>
-              ) : (
-                deletableLocationOptions.map((location) => (
-                  <option key={location} value={location}>
-                    {location}
-                  </option>
-                ))
-              )}
-            </select>
-            <button
-              className="btn btn-danger"
-              onClick={handleDeleteLocation}
-              disabled={
-                actionLoading ||
-                deletableLocationOptions.length === 0 ||
-                !locationToDelete
-              }
-            >
-              מחק מיקום
-            </button>
-          </div>
-          <div className="location-person-action-row">
-            <button
-              className="btn btn-primary"
-              onClick={openAddModal}
-              disabled={isReadOnly || actionLoading}
-              title={isReadOnly ? "ניתן להוסיף אנשים רק ביום הנוכחי" : ""}
-            >
-              הוסף אדם
-            </button>
-          </div>
-        </div>
-
-        <div className="filter-group initial-people-group">
-          <label>רשימת שמות התחלתית</label>
-          <textarea
-            placeholder={"שם בכל שורה או מופרד בפסיקים\nלדוגמה:\nיוסי כהן\nדנה לוי"}
-            value={initialPeopleInput}
-            onChange={(event) => setInitialPeopleInput(event.target.value)}
-            disabled={isReadOnly || actionLoading}
-            rows={4}
-          />
-          <button
-            className="btn btn-secondary"
-            onClick={handleAddInitialPeopleList}
-            disabled={isReadOnly || actionLoading}
-            title={isReadOnly ? "ניתן לעדכן רשימת בסיס רק ביום הנוכחי" : ""}
-          >
-            הוסף רשימת שמות
-          </button>
-        </div>
-
-        <div className="filter-group download-range-group">
-          <label>הורד הכול לפי טווח</label>
-          <div className="download-range-row">
-            <input
-              type="date"
-              value={downloadFromDate}
-              max={todayString}
-              onChange={(event) => setDownloadFromDate(event.target.value)}
-            />
-            <input
-              type="date"
-              value={downloadToDate}
-              max={todayString}
-              onChange={(event) => setDownloadToDate(event.target.value)}
-            />
-            <button
-              className="btn btn-secondary"
-              onClick={handleDownloadRangeFiles}
-              disabled={actionLoading}
-            >
-              הורד הכול (ZIP)
-            </button>
-          </div>
-        </div>
-
-        <div className="filter-group summary-box">
-          <label>סה"כ מוצגים</label>
-          <strong>{filteredPeople.length}</strong>
-        </div>
-      </section>
+      <AppToolbar
+        actionLoading={actionLoading}
+        canAddLocation={canAddLocation}
+        canChooseLocationToDelete={canChooseLocationToDelete}
+        canDeleteLocation={canDeleteLocation}
+        configuredLocationOptions={configuredLocationOptions}
+        deletableLocationOptions={deletableLocationOptions}
+        downloadFromDate={downloadFromDate}
+        downloadToDate={downloadToDate}
+        filteredPeopleCount={filteredPeople.length}
+        handleAddInitialPeopleList={handleAddInitialPeopleList}
+        handleAddLocation={handleAddLocation}
+        handleDeleteLocation={handleDeleteLocation}
+        handleDownloadRangeFiles={handleDownloadRangeFiles}
+        initialPeopleInput={initialPeopleInput}
+        isReadOnly={isReadOnly}
+        locationFilter={locationFilter}
+        locationToDelete={locationToDelete}
+        newLocationName={newLocationName}
+        onDownloadFromDateChange={(event) => setDownloadFromDate(event.target.value)}
+        onDownloadToDateChange={(event) => setDownloadToDate(event.target.value)}
+        onInitialPeopleInputChange={(event) =>
+          setInitialPeopleInput(event.target.value)
+        }
+        onLocationFilterChange={(event) => setLocationFilter(event.target.value)}
+        onLocationToDeleteChange={(event) =>
+          setLocationToDelete(event.target.value)
+        }
+        onNewLocationNameChange={(event) => setNewLocationName(event.target.value)}
+        onSearchTermChange={(event) => setSearchTerm(event.target.value)}
+        onStatusFilterChange={(event) => setStatusFilter(event.target.value)}
+        openAddModal={openAddModal}
+        searchTerm={searchTerm}
+        statusFilter={statusFilter}
+        todayString={todayString}
+      />
 
       {availableDates.length > 0 ? (
         <section className="dates-card">
@@ -1127,19 +966,7 @@ function App() {
             trackingLastActionType === "move" &&
             undoSecondsLeft > 0
         )}
-        onClose={() => {
-          if (trackingLoading || actionLoading) {
-            return;
-          }
-          setTrackingModalOpen(false);
-          setTrackingPerson(null);
-          setTrackingEvents([]);
-          setTrackingTransitions([]);
-          setTrackingLastActionEventId("");
-          setTrackingLastActionType("");
-          setLatestTransitionWarning("");
-          setUndoExpiresAtMs(0);
-        }}
+        onClose={handleCloseTrackingModal}
         onAddEvent={handleAddTrackingEvent}
         onDeleteEvent={handleDeleteTrackingEvent}
         onUndoLastAction={handleUndoLastTrackingAction}
@@ -1149,5 +976,3 @@ function App() {
 }
 
 export default App;
-
-

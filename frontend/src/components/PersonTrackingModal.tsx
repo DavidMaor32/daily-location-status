@@ -1,94 +1,92 @@
 // Modal component for per-person location event tracking and undo workflow.
-
-import { useEffect, useMemo, useState } from "react";
-import { getLocationChipClass } from "../constants/locations";
+import { useEffect, useMemo, useState, type FormEvent, type MouseEvent } from "react";
+import { getLocationChipClass } from "../constants/locations.ts";
 import {
   DAILY_STATUS_BAD,
   DAILY_STATUS_MISSING,
   DAILY_STATUS_OK,
   getDailyStatusChipClass,
-} from "../constants/statuses";
+} from "../constants/statuses.ts";
+import {
+  formatTimestamp,
+  toLocalDateTimeInput,
+  toUtcIsoFromLocalInput,
+} from "../utils/dates";
+import { formatEventType, formatTransitionSource } from "../utils/tracking";
 
-function toLocalDateTimeInput(value) {
-  const parsed = value ? new Date(value) : new Date();
-  if (Number.isNaN(parsed.getTime())) {
-    return "";
-  }
-  const year = parsed.getFullYear();
-  const month = String(parsed.getMonth() + 1).padStart(2, "0");
-  const day = String(parsed.getDate()).padStart(2, "0");
-  const hours = String(parsed.getHours()).padStart(2, "0");
-  const minutes = String(parsed.getMinutes()).padStart(2, "0");
-  return `${year}-${month}-${day}T${hours}:${minutes}`;
-}
+type TrackingPerson = {
+  full_name: string;
+  location?: string;
+  daily_status?: string;
+};
 
-function toUtcIsoFromLocalInput(value) {
-  if (!value) {
-    return undefined;
-  }
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return undefined;
-  }
-  return parsed.toISOString();
-}
+type TrackingFormState = {
+  location: string;
+  daily_status: string;
+  occurred_at_local: string;
+};
 
-function formatEventTimestamp(value) {
-  if (!value) {
-    return "-";
-  }
+type TrackingEvent = {
+  event_id: string;
+  occurred_at?: string;
+  event_type: string;
+  location: string;
+  daily_status: string;
+  is_voided?: boolean;
+};
 
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
-  }
+type TrackingTransition = {
+  transition_id: string;
+  from_location: string;
+  to_location: string;
+  moved_at?: string;
+  dwell_minutes: number;
+  transition_source?: string;
+  to_event_id?: string;
+};
 
-  return parsed.toLocaleString("he-IL", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+type AddTrackingEventPayload = {
+  location: string;
+  daily_status: string;
+  occurred_at?: string;
+};
 
-function formatEventType(eventType) {
-  if (eventType === "undo") {
-    return "ביטול";
-  }
-  if (eventType === "correction") {
-    return "תיקון";
-  }
-  return "עדכון מיקום";
-}
+type PersonTrackingModalProps = {
+  open: boolean;
+  person: TrackingPerson | null;
+  readOnly: boolean;
+  loading: boolean;
+  locationOptions: string[];
+  events: TrackingEvent[];
+  transitions: TrackingTransition[];
+  latestTransitionWarning: string;
+  canUndo: boolean;
+  undoSecondsLeft: number;
+  onClose: () => void;
+  onAddEvent: (payload: AddTrackingEventPayload) => void;
+  onDeleteEvent: (eventId: string) => void;
+  onUndoLastAction: () => void;
+};
 
-function formatTransitionSource(source) {
-  const normalized = String(source || "")
-    .trim()
-    .toLowerCase();
-  if (normalized === "bot") {
-    return "הזנה עצמית (בוט)";
-  }
-  return "UI";
-}
+const PersonTrackingModal = (props: PersonTrackingModalProps) => {
+  const {
+    open,
+    person,
+    readOnly,
+    loading,
+    locationOptions,
+    events,
+    transitions,
+    latestTransitionWarning,
+    canUndo,
+    undoSecondsLeft,
+    onClose,
+    onAddEvent,
+    onDeleteEvent,
+    onUndoLastAction,
+  } = props;
 
-function PersonTrackingModal({
-  open,
-  person,
-  readOnly,
-  loading,
-  locationOptions,
-  events,
-  transitions,
-  latestTransitionWarning,
-  canUndo,
-  undoSecondsLeft,
-  onClose,
-  onAddEvent,
-  onDeleteEvent,
-  onUndoLastAction,
-}) {
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<TrackingFormState>({
     location: "",
     daily_status: DAILY_STATUS_MISSING,
     occurred_at_local: "",
@@ -108,7 +106,7 @@ function PersonTrackingModal({
   const safeEvents = Array.isArray(events) ? events : [];
   const safeTransitions = Array.isArray(transitions) ? transitions : [];
   const transitionByToEventId = useMemo(() => {
-    const mapping = new Map();
+    const mapping = new Map<string, TrackingTransition>();
     safeTransitions.forEach((item) => {
       mapping.set(String(item.to_event_id || ""), item);
     });
@@ -119,7 +117,7 @@ function PersonTrackingModal({
     return null;
   }
 
-  const handleSubmit = (event) => {
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     onAddEvent({
       location: form.location,
@@ -128,18 +126,20 @@ function PersonTrackingModal({
     });
   };
 
+  const handleModalClick = (event: MouseEvent<HTMLDivElement>) => {
+    event.stopPropagation();
+  };
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div
-        className="modal tracking-modal"
-        onClick={(event) => event.stopPropagation()}
-      >
+      <div className="modal tracking-modal" onClick={handleModalClick}>
         <h3>{`מעקב מיקומי - ${person.full_name}`}</h3>
 
         {latestTransitionWarning ? (
           <div className="tracking-warning">{latestTransitionWarning}</div>
         ) : null}
 
+        {/* extract modal to component */}
         {!readOnly ? (
           <form className="modal-form tracking-form" onSubmit={handleSubmit}>
             <label>
@@ -220,6 +220,7 @@ function PersonTrackingModal({
           {safeEvents.length === 0 ? (
             <div className="muted-text">אין אירועי מיקום למזהה זה בתאריך שנבחר.</div>
           ) : (
+            // extract to component
             safeEvents.map((item) => {
               const transition = transitionByToEventId.get(String(item.event_id));
               return (
@@ -228,7 +229,7 @@ function PersonTrackingModal({
                   key={item.event_id}
                 >
                   <div className="tracking-event-meta">
-                    <strong>{formatEventTimestamp(item.occurred_at)}</strong>
+                    <strong>{formatTimestamp(item.occurred_at)}</strong>
                     <span className="status-chip neutral-chip">
                       {`סוג: ${formatEventType(item.event_type)}`}
                     </span>
@@ -283,7 +284,7 @@ function PersonTrackingModal({
             safeTransitions.map((item) => (
               <div className="tracking-transition-row" key={item.transition_id}>
                 <strong>{`מ-${item.from_location} ל-${item.to_location}`}</strong>
-                <span>{formatEventTimestamp(item.moved_at)}</span>
+                <span>{formatTimestamp(item.moved_at)}</span>
                 <span>{`שהייה: ${item.dwell_minutes} דקות`}</span>
                 <span>{`מקור מעבר: ${formatTransitionSource(item.transition_source)}`}</span>
               </div>
@@ -299,6 +300,6 @@ function PersonTrackingModal({
       </div>
     </div>
   );
-}
+};
 
 export default PersonTrackingModal;

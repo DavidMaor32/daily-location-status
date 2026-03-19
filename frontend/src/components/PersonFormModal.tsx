@@ -1,31 +1,54 @@
 // Modal component for adding/editing one person in today's snapshot.
-
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent, type MouseEvent } from "react";
 import {
   DAILY_STATUS_BAD,
   DAILY_STATUS_MISSING,
   DAILY_STATUS_OK,
-} from "../constants/statuses";
+} from "../constants/statuses.ts";
+
+type PersonFormData = {
+  full_name: string;
+  location: string;
+  daily_status: string;
+  notes: string;
+};
+
+type PersonFormInitialData = Partial<PersonFormData> | null;
+
+type PersonFormMode = "add" | "edit";
+
+type PersonFormModalProps = {
+  open: boolean;
+  mode: PersonFormMode;
+  initialData: PersonFormInitialData;
+  locationOptions: string[];
+  onClose: () => void;
+  onSubmit: (payload: PersonFormData) => void;
+  onDelete: () => void;
+  loading: boolean;
+};
 
 // Modal form used for both add-person and edit-person actions.
-function PersonFormModal({
-  open,
-  mode,
-  initialData,
-  locationOptions,
-  onClose,
-  onSubmit,
-  onDelete,
-  loading,
-}) {
+const PersonFormModal = (props: PersonFormModalProps) => {
+  const {
+    open,
+    mode,
+    initialData,
+    locationOptions,
+    onClose,
+    onSubmit,
+    onDelete,
+    loading,
+  } = props;
+
   const homeLocation = locationOptions[0] || "בבית";
-  const defaultForm = {
+  const defaultForm: PersonFormData = {
     full_name: "",
     location: homeLocation,
     daily_status: DAILY_STATUS_MISSING,
     notes: "",
   };
-  const [form, setForm] = useState(defaultForm);
+  const [form, setForm] = useState<PersonFormData>(defaultForm);
 
   // Populate form with current person data when opening edit mode.
   useEffect(() => {
@@ -53,7 +76,7 @@ function PersonFormModal({
   const title = mode === "edit" ? "עריכת איש" : "הוספת איש חדש";
 
   // Submit a normalized payload to the parent component.
-  const handleSubmit = (event) => {
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     onSubmit({
       full_name: form.full_name.trim(),
@@ -63,9 +86,13 @@ function PersonFormModal({
     });
   };
 
+  const handleModalClick = (event: MouseEvent<HTMLDivElement>) => {
+    event.stopPropagation();
+  };
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(event) => event.stopPropagation()}>
+      <div className="modal" onClick={handleModalClick}>
         <h3>{title}</h3>
         <form className="modal-form" onSubmit={handleSubmit}>
           <label>
@@ -143,6 +170,6 @@ function PersonFormModal({
       </div>
     </div>
   );
-}
+};
 
 export default PersonFormModal;

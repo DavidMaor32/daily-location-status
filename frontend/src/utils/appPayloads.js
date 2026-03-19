@@ -1,5 +1,4 @@
-// Utility helpers for normalizing backend payloads and UI-facing errors.
-
+// Utility helpers for normalizing backend payloads used by the UI.
 const DEFAULT_SYSTEM_STATUS = {
   server_date: null,
   server_time_utc: null,
@@ -32,20 +31,6 @@ export function normalizeSystemStatus(payload) {
     telegram_message:
       payload?.telegram_message || DEFAULT_SYSTEM_STATUS.telegram_message,
   };
-}
-
-// Convert unknown thrown value into a stable UI error message.
-export function getErrorMessage(error, fallbackMessage) {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-  if (typeof error === "string" && error.trim()) {
-    return error;
-  }
-  if (typeof error?.detail === "string" && error.detail.trim()) {
-    return error.detail;
-  }
-  return fallbackMessage;
 }
 
 // Normalize snapshot payload so corrupted/missing fields will not break UI rendering.
