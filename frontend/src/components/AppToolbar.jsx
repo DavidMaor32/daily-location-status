@@ -2,7 +2,7 @@ import {
   DAILY_STATUS_BAD,
   DAILY_STATUS_MISSING,
   DAILY_STATUS_OK,
-} from "../constants/statuses";
+} from "../constants/statuses.ts";
 
 // Toolbar section for filters, location management, bulk add, exports, and summary.
 function AppToolbar({

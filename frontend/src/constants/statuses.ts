@@ -1,5 +1,5 @@
 // Central status values used across the frontend.
-export const DAILY_STATUS_OK: string= "תקין";
+export const DAILY_STATUS_OK: string = "תקין";
 export const DAILY_STATUS_BAD: string = "לא תקין";
 export const DAILY_STATUS_MISSING: string = "לא הוזן";
 
@@ -12,4 +12,4 @@ export const getDailyStatusChipClass = (status: string) => {
     return "chip-status-bad";
   }
   return "chip-status-missing";
-}
+};

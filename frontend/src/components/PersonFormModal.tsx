@@ -4,7 +4,7 @@ import {
   DAILY_STATUS_BAD,
   DAILY_STATUS_MISSING,
   DAILY_STATUS_OK,
-} from "../constants/statuses";
+} from "../constants/statuses.ts";
 
 type PersonFormData = {
   full_name: string;

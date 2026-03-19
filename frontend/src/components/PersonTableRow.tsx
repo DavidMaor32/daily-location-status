@@ -1,11 +1,11 @@
 import clsx from "clsx";
-import { getLocationChipClass } from "../constants/locations";
+import { getLocationChipClass } from "../constants/locations.ts";
 import {
   DAILY_STATUS_BAD,
   DAILY_STATUS_MISSING,
   DAILY_STATUS_OK,
   getDailyStatusChipClass,
-} from "../constants/statuses";
+} from "../constants/statuses.ts";
 import { formatTimestamp } from "../utils/dates";
 import type { QuickUpdatePatch } from "./PersonTable";
 

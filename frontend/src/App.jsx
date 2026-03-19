@@ -39,13 +39,13 @@ import {
 import {
   DEFAULT_LOCATION_OPTIONS,
   uniqueLocations,
-} from "./constants/locations";
+} from "./constants/locations.ts";
 import {
   DEFAULT_SYSTEM_STATUS,
   normalizeSnapshotPayload,
   normalizeSystemStatus,
 } from "./utils/appPayloads";
-import { getErrorMessage } from "./utils/errors";
+import { getErrorMessage } from "./utils/errors.ts";
 
 // Main page component for daily status and location management.
 function App() {

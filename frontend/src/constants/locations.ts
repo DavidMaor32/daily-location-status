@@ -1,10 +1,10 @@
 // Default locations used when locations Excel file is created.
 const HOME_LOCATION: string = "בבית";
 const LOCATION_1: string = "מיקום 1";
-const LOCATION_2: string= "מיקום 2";
+const LOCATION_2: string = "מיקום 2";
 const LOCATION_3: string = "מיקום 3";
-const LOCATION_4: string= "מיקום 4";
-const LOCATION_5: string= "מיקום 5";
+const LOCATION_4: string = "מיקום 4";
+const LOCATION_5: string = "מיקום 5";
 
 export const DEFAULT_LOCATION_OPTIONS: string[] = [
   HOME_LOCATION,
@@ -13,7 +13,7 @@ export const DEFAULT_LOCATION_OPTIONS: string[] = [
   LOCATION_3,
   LOCATION_4,
   LOCATION_5,
-] as const;
+];
 
 // Color mapping for known locations.
 export const LOCATION_CLASS_BY_VALUE: Record<string, string> = {
@@ -25,15 +25,13 @@ export const LOCATION_CLASS_BY_VALUE: Record<string, string> = {
   [LOCATION_5]: "chip-location-5",
 };
 
-// Trim and normalize location text before sending to backend.
-
 // Remove duplicates while preserving insertion order.
 export const uniqueLocations = (locations: string[]): string[] => {
   const seen = new Set<string>();
   const output: string[] = [];
 
   locations.forEach((location) => {
-    const normalized = (location || "").trim();
+    const normalized = String(location || "").trim();
     if (!normalized || seen.has(normalized)) {
       return;
     }

@@ -1,12 +1,12 @@
 // Modal component for per-person location event tracking and undo workflow.
 import { useEffect, useMemo, useState, type FormEvent, type MouseEvent } from "react";
-import { getLocationChipClass } from "../constants/locations";
+import { getLocationChipClass } from "../constants/locations.ts";
 import {
   DAILY_STATUS_BAD,
   DAILY_STATUS_MISSING,
   DAILY_STATUS_OK,
   getDailyStatusChipClass,
-} from "../constants/statuses";
+} from "../constants/statuses.ts";
 import {
   formatTimestamp,
   toLocalDateTimeInput,
