@@ -1,5 +1,4 @@
 // Default locations used when locations Excel file is created.
-//TODO Typescript
 const HOME_LOCATION = "בבית";
 const LOCATION_1 = "מיקום 1";
 const LOCATION_2 = "מיקום 2";
@@ -14,10 +13,10 @@ export const DEFAULT_LOCATION_OPTIONS = [
   LOCATION_3,
   LOCATION_4,
   LOCATION_5,
-];
+] as const;
 
 // Color mapping for known locations.
-export const LOCATION_CLASS_BY_VALUE = {
+export const LOCATION_CLASS_BY_VALUE: Record<string, string> = {
   [HOME_LOCATION]: "chip-home",
   [LOCATION_1]: "chip-location-1",
   [LOCATION_2]: "chip-location-2",
@@ -27,18 +26,14 @@ export const LOCATION_CLASS_BY_VALUE = {
 };
 
 // Trim and normalize location text before sending to backend.
-//TODO just trim, why extra function?
-export function normalizeLocationName(rawName) {
-  return (rawName || "").trim();
-}
 
 // Remove duplicates while preserving insertion order.
-export function uniqueLocations(locations) {
-  const seen = new Set();
-  const output = [];
+export const uniqueLocations = (locations: string[]): string[] => {
+  const seen = new Set<string>();
+  const output: string[] = [];
 
   locations.forEach((location) => {
-    const normalized = normalizeLocationName(location);
+    const normalized = (location || "").trim();
     if (!normalized || seen.has(normalized)) {
       return;
     }
@@ -47,9 +42,9 @@ export function uniqueLocations(locations) {
   });
 
   return output;
-}
+};
 
 // Resolve chip class by location with fallback for custom locations.
-export function getLocationChipClass(location) {
-  return LOCATION_CLASS_BY_VALUE[location] || "chip-custom-location";
-}
+export const getLocationChipClass = (location?: string | null): string => {
+  return LOCATION_CLASS_BY_VALUE[String(location || "")] || "chip-custom-location";
+};
