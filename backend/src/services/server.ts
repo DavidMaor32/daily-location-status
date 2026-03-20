@@ -7,6 +7,8 @@ import { UserDal } from "../User/dal.js";
 import { createUserRouter } from "../User/router.js";
 import logger from "../utils/logger.js";
 import { PrismaClient } from "@prisma/client";
+import { LocationDal } from "../Location/dal.js";
+import { createLocationRouter } from "../Location/router.js";
 
 export const ServerConfigSchema = z.object({
   PORT: z.coerce.number().positive(),
@@ -32,9 +34,11 @@ export class Server {
   private registerRoutes = () => {
     // Initialize DALs
     const userDal = new UserDal(this.dbClient);
+    const locationDal = new LocationDal(this.dbClient);
 
     // Register routes
-    this.app.use("/api/users", createUserRouter(userDal));
+    this.app.use("/users", createUserRouter(userDal));
+    this.app.use("/locations", createLocationRouter(locationDal));
 
     this.app.get("/health", (_: Request, res: Response) => {
       res.sendStatus(StatusCodes.OK);
