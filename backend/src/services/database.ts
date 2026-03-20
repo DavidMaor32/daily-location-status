@@ -1,4 +1,4 @@
-import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { PrismaClient } from "@prisma/client";
 import z from "zod";
 
@@ -9,5 +9,5 @@ export type DatabaseConfig = z.infer<typeof DatabaseConfigSchema>;
 
 export const createDBClient = (config: DatabaseConfig) => 
     new PrismaClient({adapter:
-        new PrismaPg({ connectionString: config.DATABASE_URL})
+        new PrismaMariaDb(config.DATABASE_URL)
     });
