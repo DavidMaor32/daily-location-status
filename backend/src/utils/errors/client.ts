@@ -18,3 +18,9 @@ export class ValidationError extends ClientError {
         super(message, StatusCodes.UNPROCESSABLE_ENTITY);
     }
 }
+
+export class AlreadyExistsError extends ClientError {
+    constructor(entityName: string, field: string, value: string) {
+        super(`${entityName} with ${field}: '${value}' already exists`, StatusCodes.CONFLICT);
+    }
+}
