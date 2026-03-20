@@ -13,9 +13,9 @@ datasource db {
 
 model Person {
   id               Int               @id @default(autoincrement())
-  full_name        String
+  fullName         String            @map("full_name")
   phone            String
-  telegram_user_id String?
+  telegramUserId   String?           @map("telegram_user_id")
 
   locationReports  LocationReport[]
 }
