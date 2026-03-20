@@ -1,8 +1,8 @@
 import { Request, Response } from "express";
-import { UserDal } from "./dal";
 import { StatusCodes } from "http-status-codes";
-import { partialPlainUserValidator } from "./types";
 import { entityWithIdValidator } from "../utils/validations";
+import { UserDal } from "./dal";
+import { partialPlainUserValidator, plainUserValidator } from "./types";
 
 export const getAllUsersHandler =
   (dal: UserDal) => async (_: Request, res: Response) => {
@@ -28,4 +28,13 @@ export const updateUser =
     await dal.updateUser({ id, ...updates });
 
     res.sendStatus(StatusCodes.NO_CONTENT);
+  };
+
+export const AddUserHandler =
+  (dal: UserDal) => async (req: Request, res: Response) => {
+    const { fullName, phone } = plainUserValidator(req.body);
+
+    const user = await dal.addUser({ fullName, phone });
+
+    res.status(StatusCodes.CREATED).json(user);
   };

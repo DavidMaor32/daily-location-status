@@ -1,6 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { DBUser, PlainUser } from "./types";
-import { NotFoundError } from "../utils/errors/client";
+import { AlreadyExistsError, NotFoundError } from "../utils/errors/client";
 
 export class UserDal {
   private model;
@@ -25,4 +25,14 @@ export class UserDal {
 
     await this.model.update({where: {id}, data: {fullName, phone}});
   }
+
+  addUser = async ({ fullName, phone }: { fullName: string; phone: string }) => {
+    const existingUser = await this.model.findUnique({ where: { phone } });
+
+    if (existingUser) {
+      throw new AlreadyExistsError("User", "phone", phone);
+    }
+
+    return this.model.create({ data: { fullName, phone } });
+  };
 }
