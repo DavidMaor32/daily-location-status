@@ -1,0 +1,33 @@
+{
+  "name": "daily-location-status-backend-node",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "nodemon --watch src --ext ts --exec ts-node src/index.ts",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "tsc",
+    "build:db": "npx prisma migrate dev",
+    "update:db": "npx prisma generate",
+    "start": "node -r dotenv/config dist"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.12.0",
+    "dotenv": "^17.3.1",
+    "nodemon": "^3.1.14",
+    "prisma": "^7.5.0",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "@prisma/client": "^7.5.0",
+    "cors": "^2.8.5",
+    "exceljs": "^4.4.0",
+    "express": "^4.21.2",
+    "http-status-codes": "^2.3.0",
+    "winston": "^3.19.0",
+    "zod": "^4.3.6"
+  }
+}
