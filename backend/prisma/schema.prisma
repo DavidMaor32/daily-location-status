@@ -14,7 +14,7 @@ datasource db {
 model Person {
   id               Int               @id @default(autoincrement())
   fullName         String            @map("full_name")
-  phone            String
+  phone            String            @unique
   telegramUserId   String?           @map("telegram_user_id")
 
   locationReports  LocationReport[]
@@ -22,7 +22,7 @@ model Person {
 
 model Location {
   id              Int               @id @default(autoincrement())
-  name            String
+  name            String            @unique
 
   locationReports LocationReport[]
 }
