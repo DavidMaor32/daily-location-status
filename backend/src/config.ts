@@ -1,23 +1,25 @@
-import { ServerConfig, ServerConfigSchema } from "./services/server";
-import { createValidator } from "./utils/validations";
 import z from "zod";
 import { DatabaseConfigSchema } from "./services/database";
+import { ServerConfigSchema } from "./services/server";
+import { SystemConfig } from "./services/system";
+import { createValidator } from "./utils/validations";
 
 export const SystemEnvSchema = z.object({
   ...ServerConfigSchema.shape,
   ...DatabaseConfigSchema.shape,
 });
 
-export type SystemConfig = z.infer<typeof SystemEnvSchema>;
-
 export const validateSystemEnv = createValidator(SystemEnvSchema);
 
-export const createServerConfig = (env: NodeJS.ProcessEnv): SystemConfig => {
+export const createSystemConfig = (env: NodeJS.ProcessEnv): SystemConfig => {
   const validated = validateSystemEnv(env);
 
   return {
-    PORT: validated.PORT,
-    DATABASE_URL: validated.DATABASE_URL
-  }
+    server: {
+      PORT: validated.PORT,
+    },
+    db: {
+      DATABASE_URL: validated.DATABASE_URL,
+    },
+  };
 };
-

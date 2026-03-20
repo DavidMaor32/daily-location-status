@@ -6,7 +6,7 @@ import z from "zod";
 import { UserDal } from "../User/dal.js";
 import { createUserRouter } from "../User/router.js";
 import logger from "../utils/logger.js";
-import { prisma } from "./database.js";
+import { PrismaClient } from "@prisma/client";
 
 export const ServerConfigSchema = z.object({
   PORT: z.coerce.number().positive(),
@@ -18,7 +18,7 @@ export class Server {
   private app: Express;
   private server?: http.Server;
 
-  constructor(private config: ServerConfig) {
+  constructor(private config: ServerConfig, private dbClient: PrismaClient) {
     this.app = express();
     this.registerMiddlewares();
     this.registerRoutes();
@@ -31,7 +31,7 @@ export class Server {
 
   private registerRoutes = () => {
     // Initialize DALs
-    const userDal = new UserDal(prisma);
+    const userDal = new UserDal(this.dbClient);
 
     // Register routes
     this.app.use("/api/users", createUserRouter(userDal));

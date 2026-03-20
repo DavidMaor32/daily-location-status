@@ -1,17 +1,17 @@
-import { createServerConfig } from "./config";
-import { Server } from "./services/server.js";
+import { createSystemConfig } from "./config";
+import { System } from "./services/system";
 
 const main = () => {
-    const config = createServerConfig(process.env);
-    const system = new Server(config);
+  const config = createSystemConfig(process.env);
+  const system = new System(config);
 
-    ['SIGINT', 'SIGTERM', 'SIGHUP'].forEach(code => {
-        process.on(code, () => {
-            system.stop();
-        });
+  ["SIGINT", "SIGTERM", "SIGHUP"].forEach((code) => {
+    process.on(code, () => {
+      system.stop();
     });
+  });
 
-    system.start();
+  system.start();
 };
 
 main();
