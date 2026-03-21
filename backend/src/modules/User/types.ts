@@ -1,5 +1,5 @@
 import z from 'zod';
-import { createValidator } from '../utils/validations';
+import { createValidator } from '../../utils/validations';
 import { DBUserScheme, PartialPlainUserScheme, PlainUserScheme } from './schemas';
 
 export type PlainUser = z.infer<typeof PlainUserScheme>;

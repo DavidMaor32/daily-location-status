@@ -11,7 +11,7 @@ datasource db {
   provider = "mysql"
 }
 
-model Person {
+model User {
   id               Int               @id @default(autoincrement())
   fullName         String            @map("full_name")
   phone            String            @unique
@@ -29,15 +29,15 @@ model Location {
 
 model LocationReport {
   id            Int      @id @default(autoincrement())
-  person_id     Int
-  location_id   Int
-  occurred_at   DateTime?
-  created_at    DateTime    @default(now())
-  is_status_ok  Boolean?
+  userId      Int      @map("user_id")
+  locationId    Int      @map("location_id")
+  occurredAt    DateTime   @default(now()) @map("occurred_at")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  isStatusOk    Boolean?    @map("is_status_ok")
   source        Source
 
-  person   Person   @relation(fields: [person_id], references: [id])
-  location Location @relation(fields: [location_id], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+  location Location @relation(fields: [locationId], references: [id])
 }
 
 enum Source {
