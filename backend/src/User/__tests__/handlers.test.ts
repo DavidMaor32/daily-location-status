@@ -1,11 +1,9 @@
-import { getTestDB } from "../../services/__tests__/database";
+import { testDBClient } from "../../services/__tests__/database";
 import { UserDal } from "../dal";
 import { DBUser } from "../types";
 
-const testDB = getTestDB();
-
 describe("user handlers", () => {
-  const userDal = new UserDal(testDB);
+  const userDal = new UserDal(testDBClient);
 
   describe("getAllUsersHandlers", () => {
     const getAllUsers = userDal.getAllUsers;

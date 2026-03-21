@@ -1,4 +1,6 @@
 export default {
+  globalSetup: '<rootDir>/jest.global-setup.ts',
+  globalTeardown: '<rootDir>/jest.global-teardown.ts',
   preset: "ts-jest/presets/default-esm",
   testEnvironment: "node",
   testMatch: ["**/__tests__/**/*.test.ts"],
