@@ -3,12 +3,12 @@ import express, { Express, json, Request, Response } from "express";
 import http from "http";
 import { StatusCodes } from "http-status-codes";
 import z from "zod";
-import { UserDal } from "../User/dal.js";
-import { createUserRouter } from "../User/router.js";
+import { UserDal } from "../modules/User/dal.js";
+import { createUserRouter } from "../modules/User/router.js";
 import logger from "../utils/logger.js";
 import { PrismaClient } from "@prisma/client";
-import { LocationDal } from "../Location/dal.js";
-import { createLocationRouter } from "../Location/router.js";
+import { LocationDal } from "../modules/Location/dal.js";
+import { createLocationRouter } from "../modules/Location/router.js";
 
 export const ServerConfigSchema = z.object({
   PORT: z.coerce.number().positive(),

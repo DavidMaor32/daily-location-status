@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import { LocationDal } from "./dal";
 import { plainLocationValidator } from "./types";
 import { StatusCodes } from "http-status-codes";
-import { entityWithIdValidator } from "../utils/validations";
+import { entityWithIdValidator } from "../../utils/validations";
 
 export const createLocationHandler =
   (dal: LocationDal) => async (req: Request, res: Response) => {

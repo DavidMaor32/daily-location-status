@@ -1,5 +1,5 @@
 import z from "zod";
-import { createValidator } from "../utils/validations";
+import { createValidator } from "../../utils/validations";
 import { DBLocationScheme, PlainLocationScheme } from "./schemas";
 
 export type PlainLocation = z.infer<typeof PlainLocationScheme>;

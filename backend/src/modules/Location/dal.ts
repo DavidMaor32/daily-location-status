@@ -1,6 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { DBLocation } from "./types";
-import { NotFoundError, AlreadyExistsError } from "../utils/errors/client";
+import { NotFoundError, AlreadyExistsError } from "../../utils/errors/client";
 
 export class LocationDal {
   private model;
