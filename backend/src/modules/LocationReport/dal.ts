@@ -1,12 +1,18 @@
 import { Prisma, PrismaClient } from "@prisma/client";
 import { DBLocationReport, PlainLocationReport } from "./types";
-import { NotFoundError } from "../../utils/errors/client";
+import { ClientError, NotFoundError } from "../../utils/errors/client";
 import { SearchQueryOptions } from "./types";
 import moment from "moment";
+import { UserDal } from "../User/dal";
+import { LocationDal } from "../Location/dal";
 
 export class LocationReportDal {
   private model;
-  constructor(prisma: PrismaClient) {
+  constructor(
+    prisma: PrismaClient,
+    private userDal: UserDal,
+    private locationDal: LocationDal
+  ) {
     this.model = prisma.locationReport;
   }
 
@@ -67,8 +73,15 @@ export class LocationReportDal {
     return report;
   };
 
-  //TODO: test errors on non existing locationId/userId
   addReport = async (data: PlainLocationReport): Promise<DBLocationReport> => {
+    
+    const existingUserId = await this.userDal.getUserById(data.userId);
+    const existingLocationId = await this.locationDal.getLocationById(data.locationId);
+
+    if (!existingUserId || !existingLocationId) {
+      throw new NotFoundError("Not Found", !existingUserId && !existingLocationId? `Location ${data.locationId.toString()} and User ${data.userId.toString()}` : existingLocationId? `User ${data.userId.toString()}` : `Location ${data.locationId.toString()}`);
+    }
+
     return this.model.create({ data });
   };
 }

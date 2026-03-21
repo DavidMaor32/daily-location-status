@@ -1,15 +1,32 @@
-import { Router } from 'express';
-import { handleGetReports, handleGetReportById, handleAddReport } from './handlers';
+import { Router } from "express";
+import { LocationReportDal } from "./dal";
+import * as handlers from "./handlers";
+import { httpLogger } from "../../utils/decorators";
 
-const router = Router();
+export const createLocationReportRouter = (dal: LocationReportDal) => {
+  const router = Router();
+  const decoratedHandlers = createDecoratedLocationReportHandlers(dal);
 
-// Get reports by query parameters
-router.get('/', handleGetReports);
+  router.get("/", decoratedHandlers.getReportsHandler);
+  router.get("/:id", decoratedHandlers.getReportByIdHandler);
+  router.post("/", decoratedHandlers.addReportHandler);
 
-// Get report by ID
-router.get('/:id', handleGetReportById);
+  return router;
+};
 
-// Add a new report
-router.post('/', handleAddReport);
-
-export default router;
+export const createDecoratedLocationReportHandlers = (
+  dal: LocationReportDal
+) => ({
+  getReportsHandler: httpLogger(
+    handlers.getReportsHandler(dal),
+    "getReportsHandler"
+  ),
+  getReportByIdHandler: httpLogger(
+    handlers.getReportByIdHandler(dal),
+    "getReportByIdHandler"
+  ),
+  addReportHandler: httpLogger(
+    handlers.addReportHandler(dal),
+    "addReportHandler"
+  ),
+});

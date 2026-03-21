@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
-import { entityWithIdValidator } from "../utils/validations";
+import { entityWithIdValidator } from "../../utils/validations";
 import { UserDal } from "./dal";
 import { partialPlainUserValidator, plainUserValidator } from "./types";
 

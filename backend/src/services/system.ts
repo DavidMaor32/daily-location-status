@@ -1,6 +1,6 @@
 import z from "zod";
-import { Server, ServerConfigSchema } from "./server.js";
-import { createDBClient, DatabaseConfigSchema } from "./database.js";
+import { Server, ServerConfigSchema } from "./server";
+import { createDBClient, DatabaseConfigSchema } from "./database";
 import { PrismaClient } from "@prisma/client";
 
 export const SystemConfigSchema = z.object({

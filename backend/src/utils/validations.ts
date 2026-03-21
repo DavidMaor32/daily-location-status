@@ -14,5 +14,5 @@ export const createValidator = <T extends z.ZodType>(schema: T) => {
 };
 
 export const entityWithIdValidator = createValidator(
-  z.object({ id: z.number() }),
+  z.object({ id: z.coerce.number() }),
 );

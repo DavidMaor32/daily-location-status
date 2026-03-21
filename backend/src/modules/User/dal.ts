@@ -1,11 +1,11 @@
 import { PrismaClient } from "@prisma/client";
 import { DBUser, PlainUser } from "./types";
-import { AlreadyExistsError, NotFoundError } from "../utils/errors/client";
+import { AlreadyExistsError, NotFoundError } from "../../utils/errors/client";
 
 export class UserDal {
   private model;
   constructor(prisma: PrismaClient) {
-    this.model = prisma.person;
+    this.model = prisma.user;
   }
 
   getAllUsers = (): Promise<DBUser[]> => this.model.findMany();

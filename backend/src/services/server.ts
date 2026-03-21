@@ -3,12 +3,14 @@ import express, { Express, json, Request, Response } from "express";
 import http from "http";
 import { StatusCodes } from "http-status-codes";
 import z from "zod";
-import { UserDal } from "../modules/User/dal.js";
-import { createUserRouter } from "../modules/User/router.js";
-import logger from "../utils/logger.js";
+import { UserDal } from "../modules/User/dal";
+import { createUserRouter } from "../modules/User/router";
+import logger from "../utils/logger";
 import { PrismaClient } from "@prisma/client";
-import { LocationDal } from "../modules/Location/dal.js";
-import { createLocationRouter } from "../modules/Location/router.js";
+import { LocationDal } from "../modules/Location/dal";
+import { createLocationRouter } from "../modules/Location/router";
+import { LocationReportDal } from "../modules/LocationReport/dal";
+import { createLocationReportRouter } from "../modules/LocationReport/router";
 
 export const ServerConfigSchema = z.object({
   PORT: z.coerce.number().positive(),
@@ -35,10 +37,16 @@ export class Server {
     // Initialize DALs
     const userDal = new UserDal(this.dbClient);
     const locationDal = new LocationDal(this.dbClient);
+    const locationReportDal = new LocationReportDal(
+      this.dbClient,
+      userDal,
+      locationDal
+    );
 
     // Register routes
     this.app.use("/users", createUserRouter(userDal));
     this.app.use("/locations", createLocationRouter(locationDal));
+    this.app.use("/location-reports", createLocationReportRouter(locationReportDal));
 
     this.app.get("/health", (_: Request, res: Response) => {
       res.sendStatus(StatusCodes.OK);

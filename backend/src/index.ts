@@ -1,5 +1,6 @@
 import { createSystemConfig } from "./config";
 import { System } from "./services/system";
+import "dotenv/config";
 
 const main = () => {
   const config = createSystemConfig(process.env);
