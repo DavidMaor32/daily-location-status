@@ -23,6 +23,8 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+      args:
+        DATABASE_URL: ${DATABASE_URL}
     container_name: daily-status-api
     restart: unless-stopped
     env_file:

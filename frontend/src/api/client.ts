@@ -53,27 +53,27 @@ const apiRequest = async <T = JsonValue>(
 };
 
 // Load today's snapshot from backend.
-export const fetchTodaySnapshot = () => apiRequest("/api/snapshot/today");
+export const fetchTodaySnapshot = () => apiRequest("/snapshot/today");
 
 // Load snapshot for a specific date.
 export const fetchSnapshotByDate = (snapshotDate: string) =>
-  apiRequest(`/api/snapshot/${snapshotDate}`);
+  apiRequest(`/snapshot/${snapshotDate}`);
 
 // Force-save selected snapshot file (explicit save action).
 export const saveSnapshotNow = (snapshotDate: string) =>
-  apiRequest(`/api/snapshot/${snapshotDate}/save`, {
+  apiRequest(`/snapshot/${snapshotDate}/save`, {
     method: "POST",
   });
 
 // Delete selected snapshot date file (and matching tracking-events file).
 export const deleteSnapshotDate = (snapshotDate: string) =>
-  apiRequest(`/api/snapshot/${snapshotDate}`, {
+  apiRequest(`/snapshot/${snapshotDate}`, {
     method: "DELETE",
   });
 
 // Download one day's snapshot file as xlsx.
 export const downloadDaySnapshot = (snapshotDate: string): DownloadInfo => ({
-  url: buildApiUrl(`/api/export/day/${snapshotDate}`),
+  url: buildApiUrl(`/export/day/${snapshotDate}`),
   filename: `${snapshotDate}.xlsx`,
 });
 
@@ -88,64 +88,64 @@ export const downloadRangeSnapshots = (
   });
 
   return {
-    url: buildApiUrl(`/api/export/range?${params.toString()}`),
+    url: buildApiUrl(`/export/range?${params.toString()}`),
     filename: `snapshots_${dateFrom}_to_${dateTo}.zip`,
   };
 };
 
 // Load list of all available snapshot dates.
-export const fetchAvailableDates = () => apiRequest("/api/history/dates");
+export const fetchAvailableDates = () => apiRequest("/history/dates");
 
 // Load backend integration runtime status (Telegram bot, etc.).
-export const fetchSystemStatus = () => apiRequest("/api/system/status");
+export const fetchSystemStatus = () => apiRequest("/system/status");
 
 // Load list of available locations (stored in locations Excel file).
-export const fetchLocations = () => apiRequest("/api/locations");
+export const fetchLocations = () => apiRequest("/locations");
 
 // Add a new location option into locations Excel file.
 export const createLocation = (location: string) =>
-  apiRequest("/api/locations", {
+  apiRequest("/locations", {
     method: "POST",
     data: { location },
   });
 
 // Delete one location option from locations Excel file.
 export const deleteLocation = (location: string) =>
-  apiRequest(`/api/locations/${encodeURIComponent(location)}`, {
+  apiRequest(`/locations/${encodeURIComponent(location)}`, {
     method: "DELETE",
   });
 
 // Apply a partial update for one person row.
 export const quickUpdatePerson = (personId: string, patch: JsonObject) =>
-  apiRequest(`/api/people/${personId}`, {
+  apiRequest(`/people/${personId}`, {
     method: "PATCH",
     data: patch,
   });
 
 // Create a new person in today's snapshot and master list.
 export const addPerson = (payload: JsonObject) =>
-  apiRequest("/api/people", {
+  apiRequest("/people", {
     method: "POST",
     data: payload,
   });
 
 // Bulk-create initial people names (saved to master and today's snapshot).
 export const addInitialPeopleList = (names: string[]) =>
-  apiRequest("/api/people/initialize-list", {
+  apiRequest("/people/initialize-list", {
     method: "POST",
     data: { names },
   });
 
 // Replace person data for today's snapshot row.
 export const replacePerson = (personId: string, payload: JsonObject) =>
-  apiRequest(`/api/people/${personId}`, {
+  apiRequest(`/people/${personId}`, {
     method: "PUT",
     data: payload,
   });
 
 // Delete person from today's snapshot and master list.
 export const deletePerson = (personId: string) =>
-  apiRequest(`/api/people/${personId}`, {
+  apiRequest(`/people/${personId}`, {
     method: "DELETE",
   });
 
@@ -166,7 +166,7 @@ export const fetchPersonLocationEvents = (
   }
 
   const query = params.toString() ? `?${params.toString()}` : "";
-  return apiRequest(`/api/people/${personId}/location-events${query}`);
+  return apiRequest(`/people/${personId}/location-events${query}`);
 };
 
 // Load one person's computed location transitions for selected date.
@@ -178,7 +178,7 @@ export const fetchPersonTransitions = (
     ? `?snapshot_date=${encodeURIComponent(snapshotDate)}`
     : "";
 
-  return apiRequest(`/api/people/${personId}/transitions${query}`);
+  return apiRequest(`/people/${personId}/transitions${query}`);
 };
 
 // Append one location-event row for a person (today only).
@@ -186,7 +186,7 @@ export const createPersonLocationEvent = (
   personId: string,
   payload: JsonObject
 ) =>
-  apiRequest(`/api/people/${personId}/location-events`, {
+  apiRequest(`/people/${personId}/location-events`, {
     method: "POST",
     data: payload,
   });
@@ -198,7 +198,7 @@ export const deletePersonLocationEvent = (
   reason = "correction"
 ) =>
   apiRequest(
-    `/api/people/${personId}/location-events/${eventId}?reason=${encodeURIComponent(
+    `/people/${personId}/location-events/${eventId}?reason=${encodeURIComponent(
       reason
     )}`,
     {
@@ -208,7 +208,7 @@ export const deletePersonLocationEvent = (
 
 // Restore selected historical date into today's snapshot.
 export const restoreHistoryToToday = (snapshotDate: string) =>
-  apiRequest(`/api/history/${snapshotDate}/restore-to-today`, {
+  apiRequest(`/history/${snapshotDate}/restore-to-today`, {
     method: "POST",
   });
 
