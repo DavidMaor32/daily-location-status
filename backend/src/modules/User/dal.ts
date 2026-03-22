@@ -35,4 +35,8 @@ export class UserDal {
 
     return this.model.create({ data: { fullName, phone } });
   };
+
+  getUserByNameAndPhone = async ({ fullName, phone }: { fullName: string; phone: string }) => {
+    return await this.model.findUnique({ where: { fullName, phone } });
+  };
 }

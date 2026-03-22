@@ -11,6 +11,7 @@ import { LocationDal } from "../modules/Location/dal";
 import { createLocationRouter } from "../modules/Location/router";
 import { LocationReportDal } from "../modules/LocationReport/dal";
 import { createLocationReportRouter } from "../modules/LocationReport/router";
+import { TelegramBot } from "./telegram/TelegramBot";
 
 export const ServerConfigSchema = z.object({
   PORT: z.coerce.number().positive(),
@@ -33,7 +34,7 @@ export class Server {
     this.app.use(cors());
   };
 
-  private registerRoutes = () => {
+  private registerRoutes = async () => {
     // Initialize DALs
     const userDal = new UserDal(this.dbClient);
     const locationDal = new LocationDal(this.dbClient);
@@ -51,6 +52,10 @@ export class Server {
     this.app.get("/health", (_: Request, res: Response) => {
       res.sendStatus(StatusCodes.OK);
     });
+
+    // Initialize Telegram Bot
+    const telegramBot = new TelegramBot(userDal, locationDal, locationReportDal, process.env.TELEGRAM_BOT_TOKEN!);
+    await telegramBot.launch();
   };
 
   start = () => {
