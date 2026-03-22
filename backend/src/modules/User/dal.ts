@@ -20,10 +20,10 @@ export class UserDal {
     return user;
   }
 
-  updateUser = async ({id, fullName, phone}: Partial<PlainUser> & { id: number}) => {
+  updateUser = async ({id, fullName, phone, telegramUserId}: Partial<PlainUser> & { id: number, telegramUserId?: string}) => {
     await this.getUserById(id);
 
-    await this.model.update({where: {id}, data: {fullName, phone}});
+    await this.model.update({where: {id}, data: {fullName, phone, telegramUserId}});
   }
 
   addUser = async ({ fullName, phone }: { fullName: string; phone: string }) => {
