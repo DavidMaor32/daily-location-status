@@ -6,6 +6,25 @@ import {
   plainLocationReportValidator,
   searchQueryOptionsValidator,
 } from "./types";
+import { Workbook } from "exceljs";
+
+export const exportReportsHandler =
+  (dal: LocationReportDal) => async (req: Request, res: Response) => {
+    const params = searchQueryOptionsValidator(req.query);
+    const reports = await dal.getAllReports(params);
+    const workBook = new Workbook();
+
+    // apply logic
+    
+
+    const dateString = 'DD-MM-YYYY';
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=' + `${dateString}.xlsx`);
+    res.status(StatusCodes.OK)
+
+    await workBook.xlsx.write(res);
+    res.end();
+  }
 
 export const getReportsHandler =
   (dal: LocationReportDal) => async (req: Request, res: Response) => {

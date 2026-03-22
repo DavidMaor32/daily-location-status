@@ -84,4 +84,22 @@ export class LocationReportDal {
 
     return this.model.create({ data });
   };
+
+  // TODO: 
+  getDailySummaryData = async (date: Date) => {
+    const where =  {
+        occurredAt: {
+          gte: moment(date).startOf('day').toDate(),
+          lt: moment(date).startOf('date').add(1, 'day').toDate(),
+        }
+      }
+
+    const reportsCounts = await this.model.groupBy({
+      by: ['userId'],
+      _count: {
+        id: true,
+      },
+      where,
+    });
+  }
 }
