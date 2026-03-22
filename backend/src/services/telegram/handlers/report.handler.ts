@@ -9,7 +9,6 @@ import { locationKeyboard, mainKeyboard, statusKeyboard } from "../keyboards";
 export const reportHandler = async (bot: Telegraf<MyBotContext>, userDal: UserDal, locationDal: LocationDal, locationReportDal: LocationReportDal) => {
     const locations = await locationDal.getAllLocations();
     const locationsNames = locations.map((location) => location.name);
-console.log(locationsNames);
 
     bot.hears("הזנת סטטוס", (ctx) => {
         ctx.session.step = "WAITING_FOR_LOCATION";
