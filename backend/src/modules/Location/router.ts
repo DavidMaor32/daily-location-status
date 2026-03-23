@@ -10,6 +10,7 @@ export const createLocationRouter = (dal: LocationDal) => {
   router.get("/", decoratedHandlers.getAllLocationsHandler);
   router.get("/:id", decoratedHandlers.getLocationByIdHandler);
   router.post("/", decoratedHandlers.createLocationHandler);
+  router.delete("/:id", decoratedHandlers.deleteLocationHandler);
 
   return router;
 };
@@ -26,5 +27,9 @@ export const createDecoratedLocationHandlers = (dal: LocationDal) => ({
   createLocationHandler: httpLogger(
     handlers.createLocationHandler(dal),
     "createLocationHandler"
+  ),
+  deleteLocationHandler: httpLogger(
+    handlers.deleteLocationHandler(dal),
+    "deleteLocationHandler"
   ),
 });
