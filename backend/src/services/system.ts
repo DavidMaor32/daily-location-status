@@ -34,7 +34,7 @@ export class System {
   };
 
   stop = () => {
-    this.server?.stop();
     this.backupService?.stop();
+    this.server?.stop();
   };
 }
