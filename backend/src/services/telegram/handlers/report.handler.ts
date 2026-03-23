@@ -7,21 +7,11 @@ import { locationKeyboard, mainKeyboard, statusKeyboard } from "../keyboards";
 
 
 export const reportHandler = async (bot: Telegraf<MyBotContext>, userDal: UserDal, locationDal: LocationDal, locationReportDal: LocationReportDal) => {
-    const locations = await locationDal.getAllLocations();
-    const locationsNames = locations.map((location) => location.name);
-
-    bot.hears("הזנת סטטוס", (ctx) => {
+    bot.hears("הזנת סטטוס", async (ctx) => {
         ctx.session.step = "WAITING_FOR_LOCATION";
-        return ctx.reply(`שלום! ${ctx.session.fullName} \n איפה אתה נמצא?`, locationKeyboard());
-    })
-
-    bot.hears(locationsNames, (ctx) => {
-        if(ctx.session.step !== "WAITING_FOR_LOCATION") return;
-        ctx.session.locationId = locations.find((location) => location.name === ctx.message.text)?.id;
-        
-        ctx.session.step = "WAITING_FOR_STATUS";
-        return ctx.reply("מה הסטטוס שלך?", statusKeyboard());
-
+        const locations = await locationDal.getAllLocations();
+        const locationNames = locations.map((l) => l.name);
+        return ctx.reply(`שלום! ${ctx.session.fullName} \n איפה אתה נמצא?`, locationKeyboard(locationNames));
     });
 
     bot.hears(["תקין", "לא תקין"], async (ctx) => {
@@ -42,6 +32,17 @@ export const reportHandler = async (bot: Telegraf<MyBotContext>, userDal: UserDa
         ctx.reply(`ההזנה נקלטה בהצלחה!\nשם: ${ctx.session.fullName}.\nמיקום: ${location?.name}.\nסטטוס: ${isOk ? "תקין" : "לא תקין"}.`);
 
         return ctx.reply("רוצה לעדכן שוב?", mainKeyboard());
-    })
+    });
 
+    bot.on("text", async (ctx) => {
+        if (ctx.session.step !== "WAITING_FOR_LOCATION") return;
+        const locations = await locationDal.getAllLocations();
+        const location = locations.find((l) => l.name === ctx.message.text);
+        if (!location) {
+            return ctx.reply("נא לבחור מיקום מהרשימה.");
+        }
+        ctx.session.locationId = location.id;
+        ctx.session.step = "WAITING_FOR_STATUS";
+        return ctx.reply("מה הסטטוס שלך?", statusKeyboard());
+    });
 }

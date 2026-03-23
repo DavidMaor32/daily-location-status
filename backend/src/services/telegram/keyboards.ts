@@ -2,12 +2,15 @@ import { Markup } from "telegraf";
 
 export const mainKeyboard = () => Markup.keyboard([["הזנת סטטוס"]]).resize();
 
-export const locationKeyboard = () =>
-    Markup.keyboard([
-      ["בבית", "מיקום 1"],
-      ["מיקום 2", "מיקום 3"],
-      ["מיקום 4", "מיקום 5"],
-    ]).resize();
+const ROW_SIZE = 2;
+
+export const locationKeyboard = (locationNames: string[]) => {
+  const rows: string[][] = [];
+  for (let i = 0; i < locationNames.length; i += ROW_SIZE) {
+    rows.push(locationNames.slice(i, i + ROW_SIZE));
+  }
+  return Markup.keyboard(rows).resize();
+};
 
 
 export const statusKeyboard = () => Markup.keyboard([["תקין", "לא תקין"]]).resize();
