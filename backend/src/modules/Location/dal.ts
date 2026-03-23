@@ -1,5 +1,5 @@
 import { PrismaClient } from "@prisma/client";
-import { DBLocation } from "./types";
+import { DBLocation, PlainLocation } from "./types";
 import { NotFoundError, AlreadyExistsError } from "../../utils/errors/client";
 
 export class LocationDal {
@@ -28,5 +28,15 @@ export class LocationDal {
     }
 
     return this.model.create({ data: { name } });
+  };
+
+  addLocationsFromExcel = async (locations: PlainLocation[]) => {
+    if (locations.length === 0) {
+      return { count: 0 };
+    }
+    return await this.model.createMany({
+      data: locations,
+      skipDuplicates: true,
+    });
   };
 }

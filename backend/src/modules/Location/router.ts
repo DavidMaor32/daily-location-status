@@ -1,7 +1,25 @@
 import { Router } from "express";
+import multer from "multer";
+import { ValidationError } from "../../utils/errors/client";
 import { LocationDal } from "./dal";
 import * as handlers from "./handlers";
 import { httpLogger } from "../../utils/decorators";
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_, file, cb) => {
+    const allowed = [
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "application/vnd.ms-excel",
+    ];
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new ValidationError("Only .xlsx and .xls files are allowed"));
+    }
+  },
+});
 
 export const createLocationRouter = (dal: LocationDal) => {
   const router = Router();
@@ -10,6 +28,7 @@ export const createLocationRouter = (dal: LocationDal) => {
   router.get("/", decoratedHandlers.getAllLocationsHandler);
   router.get("/:id", decoratedHandlers.getLocationByIdHandler);
   router.post("/", decoratedHandlers.createLocationHandler);
+  router.post("/excel", upload.single("file"), decoratedHandlers.addLocationsFromExcelHandler);
 
   return router;
 };
@@ -26,5 +45,9 @@ export const createDecoratedLocationHandlers = (dal: LocationDal) => ({
   createLocationHandler: httpLogger(
     handlers.createLocationHandler(dal),
     "createLocationHandler"
+  ),
+  addLocationsFromExcelHandler: httpLogger(
+    handlers.addLocationsFromExcelHandler(dal),
+    "addLocationsFromExcel"
   ),
 });
