@@ -7,17 +7,39 @@ import {
   searchQueryOptionsValidator,
 } from "./types";
 import { Workbook } from "exceljs";
+import moment from "moment";
 
 export const exportReportsHandler =
   (dal: LocationReportDal) => async (req: Request, res: Response) => {
-    const params = searchQueryOptionsValidator(req.query);
+
+    const defaultParams = {
+      userId: 1,
+      locationId: 1,
+      dailyStatus: null,
+      date: new Date(),
+      minDate: new Date('2026-03-22'),
+      maxDate: new Date(),
+    };
+
+    const params = Object.keys(req.query).length > 0 ? searchQueryOptionsValidator(req.query) : searchQueryOptionsValidator(defaultParams);
+
     const reports = await dal.getAllReports(params);
     const workBook = new Workbook();
+    const sheet = workBook.addWorksheet('דיווח');
 
-    // apply logic
-    
+    sheet.columns = [
+      { header: 'id', key: 'id', width: 20 },
+      { header: 'userId', key: 'userId', width: 20 },
+      { header: 'locationId', key: 'locationId', width: 20 },
+      { header: 'occurredAt', key: 'occurredAt', width: 20 },
+      { header: 'createdAt', key: 'createdAt', width: 20 },
+      { header: 'isStatusOk', key: 'isStatusOk', width: 20 },
+      { header: 'source', key: 'source', width: 20 },
+    ];
 
-    const dateString = 'DD-MM-YYYY';
+    reports.forEach(row => sheet.addRow(row));
+
+    const dateString = moment().format('DD-MM-YYYY');
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', 'attachment; filename=' + `${dateString}.xlsx`);
     res.status(StatusCodes.OK)
@@ -46,6 +68,8 @@ export const getReportByIdHandler =
 
 export const addReportHandler =
   (dal: LocationReportDal) => async (req: Request, res: Response) => {
+    req.body.occurredAt = new Date();
+    
     const data = plainLocationReportValidator(req.body);
 
     const report = await dal.addReport(data);

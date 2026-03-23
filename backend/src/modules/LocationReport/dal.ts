@@ -38,26 +38,25 @@ export class LocationReportDal {
   getAllReports = async (
     params: SearchQueryOptions,
   ): Promise<DBLocationReport[]> => {
-    const today = new Date();
+  const today = new Date();
+  
+  const date = params?.date ?? today;
 
-    const date = params?.date ?? today;
+  const minDate = moment(params?.minDate ?? date)
+  .startOf("day")
+  .toDate();
+  const maxDate = moment(params?.maxDate ?? date)
+  .startOf("day")
+  .add(1, "day")
+  .toDate();
 
-    const minDate = moment(params?.minDate ?? date)
-      .startOf("day")
-      .toDate();
-    const maxDate = moment(params?.maxDate ?? date)
-      .startOf("day")
-      .add(1, "day")
-      .toDate();
+  const dateFilter: Prisma.DateTimeFilter = {
+    gte: minDate,
+    lte: maxDate,
+  };
 
-    const dateFilter: Prisma.DateTimeFilter = {
-      lte: minDate,
-      gte: maxDate,
-    };
-
-    return await this.model.findMany({
+  return await this.model.findMany({
       where: {
-        ...params,
         occurredAt: dateFilter,
       },
     });
