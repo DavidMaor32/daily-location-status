@@ -44,7 +44,11 @@ export class BackupService {
         : new Workbook();
 
       const sheetName = this.getSheetName(now);
-      const sheet = workbook.addWorksheet(sheetName);
+      let sheet = workbook.getWorksheet(sheetName);
+
+      if (!sheet) {
+        sheet = workbook.addWorksheet(sheetName);
+      }
 
       await this.fillSheet(sheet);
 
