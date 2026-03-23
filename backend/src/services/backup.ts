@@ -2,6 +2,7 @@ import { PrismaClient } from "@prisma/client";
 import { Workbook } from "exceljs";
 import * as fs from "fs";
 import * as path from "path";
+import logger from "../utils/logger";
 
 export class BackupService {
   private interval?: NodeJS.Timeout;
@@ -14,7 +15,7 @@ export class BackupService {
   }
 
   start() {
-    console.log("BackupService started");
+    logger.info("BackupService started");
 
     this.runBackup();
 
@@ -29,7 +30,7 @@ export class BackupService {
 
   async runBackup() {
     if (this.isRunning) {
-      console.log("Backup skipped (already running)");
+      logger.info("Backup skipped (already running)");
       return;
     }
 
@@ -56,10 +57,10 @@ export class BackupService {
 
       this.cleanOldBackups(30);
 
-      console.log("Backup saved:", filePath);
+      logger.info(`Backup saved: ${filePath}`);
 
     } catch (err) {
-      console.error("Backup failed:", err);
+      logger.error("Backup failed", { error: err });
     } finally {
       this.isRunning = false;
     }
@@ -72,12 +73,19 @@ export class BackupService {
   }
 
   private getFilePath(date: Date): string {
-    const dateStr = date.toISOString().split("T")[0];
+    // Format: DD-MM-YYYY.xlsx — matches client requirement
+    const day   = String(date.getDate()).padStart(2, "0");
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const year  = date.getFullYear();
+    const dateStr = `${day}-${month}-${year}`;
     return path.join(this.backupDir, `${dateStr}.xlsx`);
   }
 
   private getSheetName(date: Date): string {
-    return date.toTimeString().slice(0,5); // HH:mm
+    // HH-mm format — colons are forbidden in Excel sheet names
+    const hours   = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    return `${hours}-${minutes}`;
   }
 
   private ensureDir() {
@@ -87,37 +95,39 @@ export class BackupService {
   }
 
   private async fillSheet(sheet: any) {
-    sheet.columns = [
-      { header: "User", key: "user" },
-      { header: "Location", key: "location" },
-      { header: "Status", key: "status" },
-      { header: "Time", key: "time" },
-    ];
+    if (sheet.rowCount === 0) {
+      sheet.columns = [
+        { header: "User",     key: "user"     },
+        { header: "Location", key: "location" },
+        { header: "Status",   key: "status"   },
+        { header: "Time",     key: "time"     },
+      ];
+    }
 
     const startOfDay = new Date();
-    startOfDay.setHours(0,0,0,0);
+    startOfDay.setHours(0, 0, 0, 0);
 
     const reports = await this.prisma.locationReport.findMany({
       where: {
         occurredAt: {
-          gte: startOfDay
-        }
+          gte: startOfDay,
+        },
       },
       include: {
         user: true,
-        location: true
+        location: true,
       },
       orderBy: {
-        occurredAt: "asc"
-      }
+        occurredAt: "asc",
+      },
     });
 
-    reports.forEach(r => {
+    reports.forEach((r) => {
       sheet.addRow({
-        user: r.user.fullName,
+        user:     r.user.fullName,
         location: r.location.name,
-        status: r.isStatusOk,
-        time: r.occurredAt
+        status:   r.isStatusOk,
+        time:     r.occurredAt,
       });
     });
   }
@@ -125,7 +135,7 @@ export class BackupService {
   private cleanOldBackups(days: number) {
     const files = fs.readdirSync(this.backupDir);
 
-    files.forEach(file => {
+    files.forEach((file) => {
       if (!file.endsWith(".xlsx")) return;
 
       const filePath = path.join(this.backupDir, file);
@@ -135,7 +145,7 @@ export class BackupService {
 
       if (ageDays > days) {
         fs.unlinkSync(filePath);
-        console.log("Deleted old backup:", file);
+        logger.info(`Deleted old backup: ${file}`);
       }
     });
   }
