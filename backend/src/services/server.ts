@@ -1,7 +1,8 @@
 import cors from "cors";
-import express, { Express, json, Request, Response } from "express";
+import express, { Express, json, NextFunction, Request, Response } from "express";
 import http from "http";
 import { StatusCodes } from "http-status-codes";
+import { HttpError } from "../utils/errors/types";
 import z from "zod";
 import { UserDal } from "../modules/User/dal";
 import { createUserRouter } from "../modules/User/router";
@@ -11,6 +12,7 @@ import { LocationDal } from "../modules/Location/dal";
 import { createLocationRouter } from "../modules/Location/router";
 import { LocationReportDal } from "../modules/LocationReport/dal";
 import { createLocationReportRouter } from "../modules/LocationReport/router";
+import { TelegramBot } from "./telegram/TelegramBot";
 
 export const ServerConfigSchema = z.object({
   PORT: z.coerce.number().positive(),
@@ -33,7 +35,7 @@ export class Server {
     this.app.use(cors());
   };
 
-  private registerRoutes = () => {
+  private registerRoutes = async () => {
     // Initialize DALs
     const userDal = new UserDal(this.dbClient);
     const locationDal = new LocationDal(this.dbClient);
@@ -51,6 +53,20 @@ export class Server {
     this.app.get("/health", (_: Request, res: Response) => {
       res.sendStatus(StatusCodes.OK);
     });
+
+    this.app.use(
+      (err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+        if (err instanceof HttpError) {
+          res.status(err.code).json(err.message);
+        } else {
+          res.sendStatus(StatusCodes.INTERNAL_SERVER_ERROR);
+        }
+      }
+    );
+
+    // Initialize Telegram Bot
+    const telegramBot = new TelegramBot(userDal, locationDal, locationReportDal, process.env.TELEGRAM_BOT_TOKEN!);
+    await telegramBot.launch();
   };
 
   start = () => {
