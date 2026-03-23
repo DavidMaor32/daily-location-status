@@ -85,7 +85,6 @@ export class LocationReportDal {
     return this.model.create({ data });
   };
 
-  // TODO: 
   getDailySummaryData = async (date: Date) => {
     const where =  {
         occurredAt: {
