@@ -2,13 +2,13 @@ import { apiRequest } from "./base";
 
 export type User = {
   id: number;
-  name: string;
+  fullName: string;
   phone?: string;
 };
 
 export type UpdateUserPayload = {
   id: number;
-  name?: string;
+  fullName?: string;
   phone?: string;
 };
 

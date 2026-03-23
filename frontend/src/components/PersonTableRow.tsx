@@ -65,6 +65,7 @@ const PersonTableRow = ({
             {locationOptions.map((location) => (
               <button
                 key={location}
+                type="button"
                 className="btn btn-chip"
                 onClick={() => onQuickUpdate(person.person_id, { location })}
               >
@@ -75,14 +76,10 @@ const PersonTableRow = ({
         ) : null}
       </td>
       <td>
-        <span
-          className={`status-chip ${getDailyStatusChipClass(person.daily_status)}`}
-        >
-          {person.daily_status}
-        </span>
         {!readOnly ? (
           <div className="quick-actions">
             <button
+              type="button"
               className={getStatusQuickButtonClass(
                 DAILY_STATUS_OK,
                 person.daily_status
@@ -96,6 +93,7 @@ const PersonTableRow = ({
               תקין
             </button>
             <button
+              type="button"
               className={getStatusQuickButtonClass(
                 DAILY_STATUS_BAD,
                 person.daily_status
@@ -107,19 +105,6 @@ const PersonTableRow = ({
               }
             >
               לא תקין
-            </button>
-            <button
-              className={getStatusQuickButtonClass(
-                DAILY_STATUS_MISSING,
-                person.daily_status
-              )}
-              onClick={() =>
-                onQuickUpdate(person.person_id, {
-                  daily_status: DAILY_STATUS_MISSING,
-                })
-              }
-            >
-              איפוס
             </button>
           </div>
         ) : null}
