@@ -1,7 +1,8 @@
 import cors from "cors";
-import express, { Express, json, Request, Response } from "express";
+import express, { Express, json, NextFunction, Request, Response } from "express";
 import http from "http";
 import { StatusCodes } from "http-status-codes";
+import { HttpError } from "../utils/errors/types";
 import z from "zod";
 import { UserDal } from "../modules/User/dal";
 import { createUserRouter } from "../modules/User/router";
@@ -52,6 +53,16 @@ export class Server {
     this.app.get("/health", (_: Request, res: Response) => {
       res.sendStatus(StatusCodes.OK);
     });
+
+    this.app.use(
+      (err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+        if (err instanceof HttpError) {
+          res.status(err.code).json(err.message);
+        } else {
+          res.sendStatus(StatusCodes.INTERNAL_SERVER_ERROR);
+        }
+      }
+    );
 
     // Initialize Telegram Bot
     const telegramBot = new TelegramBot(userDal, locationDal, locationReportDal, process.env.TELEGRAM_BOT_TOKEN!);
