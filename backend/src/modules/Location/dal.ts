@@ -29,4 +29,14 @@ export class LocationDal {
 
     return this.model.create({ data: { name } });
   };
+
+  deleteLocation = async (id: number): Promise<void> => {
+    const existing = await this.model.findUnique({ where: { id } });
+
+    if (!existing) {
+      throw new NotFoundError("Location", id.toString());
+    }
+
+    await this.model.delete({ where: { id } });
+  };
 }

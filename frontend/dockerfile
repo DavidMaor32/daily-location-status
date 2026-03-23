@@ -2,9 +2,7 @@
 FROM node:22-alpine AS build
 WORKDIR /app
 
-# העתקת תיקיית ה-config משורש הפרויקט אל תוך הקונטיינר
-# זה התיקון הקריטי עבור ה-Error שקיבלת ב-Vite
-COPY config /config
+# COPY config /config
 
 # העתקת קבצי ה-npm מתוך תיקיית frontend
 COPY frontend/package*.json ./
