@@ -21,6 +21,7 @@ export class System {
   }
 
   start = () => {
+  try {
     this.backupService = new BackupService(this.database);
 
     this.server = new Server(
@@ -31,7 +32,11 @@ export class System {
 
     this.server.start();
     this.backupService.start();
-  };
+  } catch (err) {
+    console.error("System failed to start:", err);
+    throw err;
+  }
+};
 
   stop = () => {
     this.backupService?.stop();
