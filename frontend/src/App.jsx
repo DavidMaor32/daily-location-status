@@ -71,7 +71,7 @@ const mapDailyStatusToReportStatus = (dailyStatus) => {
     return false;
   }
 
-  return undefined;
+  return null;
 };
 
 const buildAvailableDates = (reports, todayString, selectedDate) => {
@@ -344,11 +344,8 @@ function App() {
       locationId: targetLocationId,
       occurredAt: new Date().toISOString(),
       source: "ui",
+      isStatusOk
     };
-
-    if (typeof isStatusOk === "boolean") {
-      payload.isStatusOk = isStatusOk;
-    }
 
     setActionLoading(true);
     setError("");
