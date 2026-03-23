@@ -89,3 +89,11 @@ export const addLocationsFromExcelHandler =
 
     res.status(StatusCodes.CREATED).json(result);
   };
+export const deleteLocationHandler =
+  (dal: LocationDal) => async (req: Request, res: Response) => {
+    const { id } = entityWithIdValidator(req.params);
+
+    await dal.deleteLocation(id);
+
+    res.sendStatus(StatusCodes.NO_CONTENT);
+  };

@@ -29,6 +29,7 @@ export const createLocationRouter = (dal: LocationDal) => {
   router.get("/:id", decoratedHandlers.getLocationByIdHandler);
   router.post("/", decoratedHandlers.createLocationHandler);
   router.post("/excel", upload.single("file"), decoratedHandlers.addLocationsFromExcelHandler);
+  router.delete("/:id", decoratedHandlers.deleteLocationHandler);
 
   return router;
 };
@@ -49,5 +50,8 @@ export const createDecoratedLocationHandlers = (dal: LocationDal) => ({
   addLocationsFromExcelHandler: httpLogger(
     handlers.addLocationsFromExcelHandler(dal),
     "addLocationsFromExcel"
+  deleteLocationHandler: httpLogger(
+    handlers.deleteLocationHandler(dal),
+    "deleteLocationHandler"
   ),
 });

@@ -4,35 +4,30 @@ import {
   DAILY_STATUS_OK,
 } from "../constants/statuses.ts";
 
-// Toolbar section for filters, location management, bulk add, exports, and summary.
+// Toolbar section for filters, location management, report exports, and summary.
 function AppToolbar({
   actionLoading,
   canAddLocation,
   canChooseLocationToDelete,
   canDeleteLocation,
-  configuredLocationOptions,
+  locationOptions,
   deletableLocationOptions,
   downloadFromDate,
   downloadToDate,
   filteredPeopleCount,
-  handleAddInitialPeopleList,
   handleAddLocation,
   handleDeleteLocation,
   handleDownloadRangeFiles,
-  initialPeopleInput,
-  isReadOnly,
   locationFilter,
   locationToDelete,
   newLocationName,
   onDownloadFromDateChange,
   onDownloadToDateChange,
-  onInitialPeopleInputChange,
   onLocationFilterChange,
   onLocationToDeleteChange,
   onNewLocationNameChange,
   onSearchTermChange,
   onStatusFilterChange,
-  openAddModal,
   searchTerm,
   statusFilter,
   todayString,
@@ -52,7 +47,7 @@ function AppToolbar({
         <label>פילטר מיקום</label>
         <select value={locationFilter} onChange={onLocationFilterChange}>
           <option value="all">הכול</option>
-          {configuredLocationOptions.map((location) => (
+          {locationOptions.map((location) => (
             <option key={location} value={location}>
               {location}
             </option>
@@ -92,63 +87,11 @@ function AppToolbar({
             הוסף מיקום
           </button>
         </div>
-        <div className="location-remove-row">
-          <select
-            value={locationToDelete}
-            onChange={onLocationToDeleteChange}
-            disabled={!canChooseLocationToDelete}
-          >
-            {deletableLocationOptions.length === 0 ? (
-              <option value="">אין מיקומים למחיקה</option>
-            ) : (
-              deletableLocationOptions.map((location) => (
-                <option key={location} value={location}>
-                  {location}
-                </option>
-              ))
-            )}
-          </select>
-          <button
-            className="btn btn-danger"
-            onClick={handleDeleteLocation}
-            disabled={!canDeleteLocation}
-          >
-            מחק מיקום
-          </button>
-        </div>
-        <div className="location-person-action-row">
-          <button
-            className="btn btn-primary"
-            onClick={openAddModal}
-            disabled={isReadOnly || actionLoading}
-            title={isReadOnly ? "ניתן להוסיף אנשים רק ביום הנוכחי" : ""}
-          >
-            הוסף אדם
-          </button>
-        </div>
-      </div>
-
-      <div className="filter-group initial-people-group">
-        <label>רשימת שמות התחלתית</label>
-        <textarea
-          placeholder={"שם בכל שורה או מופרד בפסיקים\nלדוגמה:\nיוסי כהן\nדנה לוי"}
-          value={initialPeopleInput}
-          onChange={onInitialPeopleInputChange}
-          disabled={isReadOnly || actionLoading}
-          rows={4}
-        />
-        <button
-          className="btn btn-secondary"
-          onClick={handleAddInitialPeopleList}
-          disabled={isReadOnly || actionLoading}
-          title={isReadOnly ? "ניתן לעדכן רשימת בסיס רק ביום הנוכחי" : ""}
-        >
-          הוסף רשימת שמות
-        </button>
+        
       </div>
 
       <div className="filter-group download-range-group">
-        <label>הורד הכול לפי טווח</label>
+        <label>הורד דוחות לפי טווח</label>
         <div className="download-range-row">
           <input
             type="date"
@@ -167,7 +110,7 @@ function AppToolbar({
             onClick={handleDownloadRangeFiles}
             disabled={actionLoading}
           >
-            הורד הכול (ZIP)
+            הורד אקסל
           </button>
         </div>
       </div>

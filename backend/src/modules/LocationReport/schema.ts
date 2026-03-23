@@ -8,28 +8,23 @@ export const ReportSourceSchema = z.enum(sources);
 export const PlainLocationReportSchema = z.object({
   userId: z.number(),
   locationId: z.number(),
-  occurredAt: z.date(),
+  occurredAt: z.coerce.date(),
   isStatusOk: DailyStatusOkSchema,
   source: ReportSourceSchema,
 });
 
 export const DBLocationReportSchema = PlainLocationReportSchema.extend({
     id: z.number(),
-    createdAt: z.date(),
+    createdAt: z.coerce.date(),
 });
 
 export const SearchQueryOptionsSchema = z
   .object({
-    userId: z.coerce.number().optional(),
-    locationId: z.coerce.number().optional(),
-    isStatusOk: z
-      .union([z.literal("true"), z.literal("false")])
-      .optional()
-      .transform((v) =>
-        v === undefined ? undefined : v === "true" ? true : false
-      ),
-    date: z.coerce.date().optional(),
-    minDate: z.coerce.date().optional(),
-    maxDate: z.coerce.date().optional(),
+    userId: z.number(),
+    locationId: z.number(),
+    dailyStatus: z.boolean().nullable(),
+    date: z.coerce.date(),
+    minDate: z.coerce.date(),
+    maxDate: z.coerce.date(),
   })
-  .optional();
+  .partial();

@@ -1,6 +1,6 @@
 import { Prisma, PrismaClient } from "@prisma/client";
 import { DBLocationReport, PlainLocationReport } from "./types";
-import { ClientError, NotFoundError } from "../../utils/errors/client";
+import { NotFoundError } from "../../utils/errors/client";
 import { SearchQueryOptions } from "./types";
 import moment from "moment";
 import { UserDal } from "../User/dal";
@@ -16,50 +16,42 @@ export class LocationReportDal {
     this.model = prisma.locationReport;
   }
 
-  #createDateRAange = ({
-    date,
-    min,
-    max,
-  }: Partial<{ date: Date; min: Date; max: Date }>) => {
-    if (date) {
-        return {
-            min: 0, 
-            max: 0,
-        }
-    } else if (min && max) {
-        return {
-            min: 0,
-            max: 0,
-        }
-    }
-
-  };
-
   getAllReports = async (
     params: SearchQueryOptions,
   ): Promise<DBLocationReport[]> => {
-    const today = new Date();
-    const p = params ?? ({} as NonNullable<SearchQueryOptions>);
+    const where: Prisma.LocationReportWhereInput = {};
 
-    const date = p.date ?? today;
+    if (params.userId !== undefined) {
+      where.userId = params.userId;
+    }
 
-    const minDate = moment(p.minDate ?? date)
-      .startOf("day")
-      .toDate();
-    const maxDate = moment(p.maxDate ?? date)
-      .startOf("day")
-      .add(1, "day")
-      .toDate();
+    if (params.locationId !== undefined) {
+      where.locationId = params.locationId;
+    }
 
-    const where: Prisma.LocationReportWhereInput = {
-      occurredAt: { gte: minDate, lte: maxDate },
-    };
+    if (params.dailyStatus !== undefined) {
+      where.isStatusOk = params.dailyStatus;
+    }
 
-    if (p.userId != null) where.userId = p.userId;
-    if (p.locationId != null) where.locationId = p.locationId;
-    if (p.isStatusOk !== undefined) where.isStatusOk = p.isStatusOk;
+    if (params.date || params.minDate || params.maxDate) {
+      const baseDate = params.date ?? new Date();
+      const minDate = moment(params.minDate ?? baseDate)
+        .startOf("day")
+        .toDate();
+      const maxDate = moment(params.maxDate ?? baseDate)
+        .startOf("day")
+        .add(1, "day")
+        .toDate();
 
-    return await this.model.findMany({ where });
+      where.occurredAt = {
+        gte: minDate,
+        lt: maxDate,
+      };
+    }
+
+    return await this.model.findMany({
+      where,
+    });
   };
 
   getReportById = async (id: number): Promise<DBLocationReport> => {
@@ -84,7 +76,6 @@ export class LocationReportDal {
     return this.model.create({ data });
   };
 
-  // TODO: 
   getDailySummaryData = async (date: Date) => {
     const where =  {
         occurredAt: {

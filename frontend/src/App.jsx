@@ -1,113 +1,161 @@
-// Top-level application page that coordinates data loading, filters, modals, and actions.
-// Responsibility: own the primary UI state machine and orchestrate user workflows end-to-end.
-
 import { useEffect, useMemo, useState } from "react";
 
+import { createLocation, deleteLocation, fetchLocations } from "./api/locations.ts";
 import {
-  addInitialPeopleList,
-  addPerson,
-  createLocation,
-  createPersonLocationEvent,
-  deleteLocation,
-  deletePersonLocationEvent,
-  deletePerson,
-  downloadDaySnapshot,
-  downloadRangeSnapshots,
-  fetchAvailableDates,
-  fetchLocations,
-  fetchPersonLocationEvents,
-  fetchPersonTransitions,
-  fetchSnapshotByDate,
-  fetchSystemStatus,
-  fetchTodaySnapshot,
-  getTodayString,
-  quickUpdatePerson,
-  saveSnapshotNow,
-  deleteSnapshotDate,
-  replacePerson,
-  restoreHistoryToToday,
-} from "./api/client.ts";
-import PersonFormModal from "./components/PersonFormModal";
+  createReport,
+  exportReports,
+  fetchReports,
+} from "./api/reports.ts";
+import { getTodayString } from "./api/helpers.ts";
+import { fetchUsers } from "./api/users.ts";
 import AppToolbar from "./components/AppToolbar";
-import PersonTrackingModal from "./components/PersonTrackingModal";
 import PersonTable from "./components/PersonTable";
-import {
-  AUTO_REFRESH_MS,
-  SUSPICIOUS_TRANSITION_SECONDS,
-  UNDO_WINDOW_SECONDS,
-} from "./constants/app";
 import {
   DEFAULT_LOCATION_OPTIONS,
   uniqueLocations,
 } from "./constants/locations.ts";
 import {
-  DEFAULT_SYSTEM_STATUS,
-  normalizeSnapshotPayload,
-  normalizeSystemStatus,
-} from "./utils/appPayloads";
+  DAILY_STATUS_BAD,
+  DAILY_STATUS_MISSING,
+  DAILY_STATUS_OK,
+} from "./constants/statuses.ts";
 import { getErrorMessage } from "./utils/errors.ts";
 
-// Main page component for daily status and location management.
+const REPORTS_UNAVAILABLE_MESSAGE = "לא קיימים דוחות לתאריך שנבחר.";
+
+const normalizeLocationName = (value) => String(value || "").trim();
+
+const getReportLocalDate = (value) => {
+  if (!value) {
+    return "";
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return String(value).slice(0, 10);
+  }
+
+  const year = String(parsed.getFullYear());
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const getLatestReportForUser = (reports, userId) =>
+  reports
+    .filter((report) => Number(report?.userId) === Number(userId))
+    .sort(
+      (left, right) =>
+        new Date(right?.occurredAt || 0).getTime() -
+        new Date(left?.occurredAt || 0).getTime()
+    )[0];
+
+const mapReportStatusToDailyStatus = (isStatusOk) => {
+  if (isStatusOk === true) {
+    return DAILY_STATUS_OK;
+  }
+
+  if (isStatusOk === false) {
+    return DAILY_STATUS_BAD;
+  }
+
+  return DAILY_STATUS_MISSING;
+};
+
+const mapDailyStatusToReportStatus = (dailyStatus) => {
+  if (dailyStatus === DAILY_STATUS_OK) {
+    return true;
+  }
+
+  if (dailyStatus === DAILY_STATUS_BAD) {
+    return false;
+  }
+
+  return null;
+};
+
+const buildAvailableDates = (reports, todayString, selectedDate) => {
+  const allDates = Array.isArray(reports)
+    ? reports
+        .map((report) => getReportLocalDate(report?.occurredAt))
+        .filter(Boolean)
+    : [];
+
+  return Array.from(new Set([todayString, selectedDate, ...allDates]))
+    .filter(Boolean)
+    .sort((left, right) => right.localeCompare(left));
+};
+
 function App() {
   const todayString = getTodayString();
-
-  const [snapshot, setSnapshot] = useState({ date: todayString, people: [] });
+  const [users, setUsers] = useState([]);
+  const [reports, setReports] = useState([]);
+  const [locations, setLocations] = useState([]);
   const [selectedDate, setSelectedDate] = useState(todayString);
-  const [availableDates, setAvailableDates] = useState([]);
+  const [availableDates, setAvailableDates] = useState([todayString]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState("");
-  const [systemStatus, setSystemStatus] = useState(DEFAULT_SYSTEM_STATUS);
-
   const [searchTerm, setSearchTerm] = useState("");
   const [locationFilter, setLocationFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
-
-  const [locationOptions, setLocationOptions] = useState(
-    DEFAULT_LOCATION_OPTIONS
-  );
-  const [initialPeopleInput, setInitialPeopleInput] = useState("");
   const [newLocationName, setNewLocationName] = useState("");
   const [locationToDelete, setLocationToDelete] = useState("");
   const [downloadFromDate, setDownloadFromDate] = useState(todayString);
   const [downloadToDate, setDownloadToDate] = useState(todayString);
-
-  const [modalOpen, setModalOpen] = useState(false);
-  const [modalMode, setModalMode] = useState("add");
-  const [editingPerson, setEditingPerson] = useState(null);
-  const [trackingModalOpen, setTrackingModalOpen] = useState(false);
-  const [trackingPerson, setTrackingPerson] = useState(null);
-  const [trackingEvents, setTrackingEvents] = useState([]);
-  const [trackingTransitions, setTrackingTransitions] = useState([]);
-  const [trackingLastActionEventId, setTrackingLastActionEventId] = useState("");
-  const [trackingLastActionType, setTrackingLastActionType] = useState("");
-  const [latestTransitionWarning, setLatestTransitionWarning] = useState("");
-  const [undoExpiresAtMs, setUndoExpiresAtMs] = useState(0);
-  const [undoSecondsLeft, setUndoSecondsLeft] = useState(0);
-  const [trackingLoading, setTrackingLoading] = useState(false);
-
-  const isReadOnly = snapshot.date !== todayString;
+  const isReadOnly = selectedDate !== todayString;
   const homeLocation = DEFAULT_LOCATION_OPTIONS[0];
-  const configuredLocationOptions = useMemo(
-    () => uniqueLocations(locationOptions),
-    [locationOptions]
+  const locationOptions = useMemo(() => {
+    const apiLocationNames = locations.map((location) => location.name);
+    const fallbackLocations =
+      apiLocationNames.length > 0 ? apiLocationNames : DEFAULT_LOCATION_OPTIONS;
+
+    return uniqueLocations(fallbackLocations);
+  }, [locations]);
+
+  const locationIdByName = useMemo(
+    () =>
+      new Map(
+        locations
+          .filter((location) => location?.name)
+          .map((location) => [location.name, Number(location.id)])
+      ),
+    [locations]
   );
 
-  // "Home" is required default location, so it is excluded from delete options.
-  const deletableLocationOptions = useMemo(() => {
-    return locationOptions.filter((location) => location !== homeLocation);
-  }, [locationOptions, homeLocation]);
-  const canLoadSelectedDate = Boolean(selectedDate) && !loading;
-  const canDownloadSelectedDate = Boolean(selectedDate) && !loading && !actionLoading;
-  const canRunReadOnlyDateAction = !actionLoading;
-  const canAddLocation = !actionLoading;
-  const canChooseLocationToDelete =
-    deletableLocationOptions.length > 0 && !actionLoading;
-  const canDeleteLocation =
-    !actionLoading && deletableLocationOptions.length > 0 && Boolean(locationToDelete);
+  const locationNameById = useMemo(
+    () =>
+      new Map(
+        locations.map((location) => [Number(location.id), String(location.name || "")])
+      ),
+    [locations]
+  );
+
+  const deletableLocationOptions = useMemo(
+    () => locationOptions.filter((location) => location !== homeLocation),
+    [locationOptions, homeLocation]
+  );
+
+  const people = useMemo(() => {
+    return users.map((user) => {
+      const latestReport = getLatestReportForUser(reports, user.id);
+      const location =
+        locationNameById.get(Number(latestReport?.locationId)) ||
+        (latestReport ? String(latestReport.locationId) : "");
+
+      return {
+        person_id: String(user.id),
+        full_name: String(user.fullName || ""),
+        location,
+        daily_status: mapReportStatusToDailyStatus(latestReport?.isStatusOk),
+        phone: user.phone ? String(user.phone) : "",
+        last_updated: latestReport?.occurredAt || "",
+      };
+    });
+  }, [locationNameById, reports, users]);
 
   const filteredPeople = useMemo(() => {
-    return snapshot.people
+    return people
       .filter((person) => {
         const fullName = String(person?.full_name || "");
         const location = String(person?.location || "");
@@ -133,46 +181,18 @@ function App() {
       .sort((a, b) =>
         String(a?.full_name || "").localeCompare(String(b?.full_name || ""), "he")
       );
-  }, [snapshot.people, searchTerm, locationFilter, statusFilter]);
+  }, [locationFilter, people, searchTerm, statusFilter]);
+
+  const canLoadSelectedDate = Boolean(selectedDate) && !loading;
+  const canDownloadSelectedDate = Boolean(selectedDate) && !loading && !actionLoading;
+  const canAddLocation = !actionLoading;
+  const canChooseLocationToDelete =
+    deletableLocationOptions.length > 0 && !actionLoading;
+  const canDeleteLocation =
+    !actionLoading && deletableLocationOptions.length > 0 && Boolean(locationToDelete);
 
   useEffect(() => {
-    if (!trackingPerson) {
-      return;
-    }
-    const refreshedPerson = snapshot.people.find(
-      (item) => item.person_id === trackingPerson.person_id
-    );
-    if (!refreshedPerson) {
-      resetTrackingModalState();
-      return;
-    }
-    setTrackingPerson(refreshedPerson);
-  }, [snapshot.people, trackingPerson]);
-
-  useEffect(() => {
-    if (!undoExpiresAtMs) {
-      setUndoSecondsLeft(0);
-      return undefined;
-    }
-
-    const updateCountdown = () => {
-      const seconds = Math.max(
-        0,
-        Math.ceil((undoExpiresAtMs - Date.now()) / 1000)
-      );
-      setUndoSecondsLeft(seconds);
-      if (seconds <= 0) {
-        setUndoExpiresAtMs(0);
-      }
-    };
-
-    updateCountdown();
-    const timerId = window.setInterval(updateCountdown, 1000);
-    return () => window.clearInterval(timerId);
-  }, [undoExpiresAtMs]);
-
-  useEffect(() => {
-    initialize();
+    void loadDashboard(todayString);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -181,319 +201,45 @@ function App() {
       setLocationToDelete("");
       return;
     }
+
     if (!deletableLocationOptions.includes(locationToDelete)) {
       setLocationToDelete(deletableLocationOptions[0]);
     }
   }, [deletableLocationOptions, locationToDelete]);
 
-  useEffect(() => {
-    if (selectedDate !== todayString || !systemStatus.telegram_active) {
-      return undefined;
-    }
-
-    const timerId = window.setInterval(async () => {
-      try {
-        const liveSnapshot = await fetchTodaySnapshot();
-        const normalizedLiveSnapshot = normalizeSnapshotPayload(
-          liveSnapshot,
-          todayString
-        );
-        setSnapshot((current) =>
-          current.date === todayString ? normalizedLiveSnapshot : current
-        );
-      } catch {
-        // Ignore periodic refresh failures to avoid noisy UI interruptions.
-      }
-    }, AUTO_REFRESH_MS);
-
-    return () => window.clearInterval(timerId);
-  }, [selectedDate, todayString, systemStatus.telegram_active]);
-
-  // Load today's snapshot, available historical dates, and locations list.
-  async function initialize() {
+  async function loadDashboard(dateValue) {
     setLoading(true);
     setError("");
+
     try {
-      const [
-        todaySnapshot,
-        datesResponse,
-        locationsResponse,
-        systemStatusResponse,
-      ] = await Promise.all([
-        fetchTodaySnapshot(),
-        fetchAvailableDates(),
-        fetchLocations(),
-        fetchSystemStatus().catch(() => DEFAULT_SYSTEM_STATUS),
-      ]);
-      const normalizedTodaySnapshot = normalizeSnapshotPayload(
-        todaySnapshot,
-        todayString
-      );
-      setSnapshot(normalizedTodaySnapshot);
-      setSelectedDate(normalizedTodaySnapshot.date);
-      setAvailableDates(datesResponse.dates || []);
-      setSystemStatus(normalizeSystemStatus(systemStatusResponse));
-      applyLocationOptions(locationsResponse.locations || []);
+      const [usersResponse, locationsResponse, allReportsResponse, dateReportsResponse] =
+        await Promise.all([
+          fetchUsers(),
+          fetchLocations(),
+          fetchReports(),
+          fetchReports({ date: dateValue }),
+        ]);
+
+      const safeUsers = Array.isArray(usersResponse) ? usersResponse : [];
+      const safeLocations = Array.isArray(locationsResponse) ? locationsResponse : [];
+      const safeAllReports = Array.isArray(allReportsResponse) ? allReportsResponse : [];
+      const safeDateReports = Array.isArray(dateReportsResponse)
+        ? dateReportsResponse
+        : [];
+
+      setUsers(safeUsers);
+      setLocations(safeLocations);
+      setReports(safeDateReports);
+      setSelectedDate(dateValue);
+      setAvailableDates(buildAvailableDates(safeAllReports, todayString, dateValue));
     } catch (err) {
-      setSystemStatus(DEFAULT_SYSTEM_STATUS);
+      setUsers([]);
+      setLocations([]);
+      setReports([]);
+      setAvailableDates([todayString]);
       setError(getErrorMessage(err, "טעינת הנתונים נכשלה"));
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function refreshDates() {
-    const datesResponse = await fetchAvailableDates();
-    setAvailableDates(datesResponse.dates || []);
-  }
-
-  function applyLocationOptions(apiLocations) {
-    const safeApiLocations = Array.isArray(apiLocations) ? apiLocations : [];
-    const fallbackLocations =
-      safeApiLocations.length > 0 ? safeApiLocations : DEFAULT_LOCATION_OPTIONS;
-    setLocationOptions(uniqueLocations(fallbackLocations));
-  }
-
-  function applyTrackingResponse(response, { allowUndoStart = false } = {}) {
-    const safeEvents = Array.isArray(response?.events) ? response.events : [];
-    setTrackingEvents(safeEvents);
-    const lastActionEventId = String(response?.last_action_event_id || "");
-    const lastActionType = String(response?.last_action_type || "");
-    const warningText = String(response?.latest_transition_warning || "");
-    setTrackingLastActionEventId(lastActionEventId);
-    setTrackingLastActionType(lastActionType);
-    setLatestTransitionWarning(warningText);
-
-    if (allowUndoStart && lastActionType === "move" && lastActionEventId) {
-      const deadlineMs = Date.now() + UNDO_WINDOW_SECONDS * 1000;
-      setUndoExpiresAtMs(deadlineMs);
-      return;
-    }
-
-    if (!allowUndoStart || lastActionType === "undo" || lastActionType === "correction") {
-      setUndoExpiresAtMs(0);
-    }
-  }
-
-  function shouldConfirmSuspiciousTransition(payload) {
-    const toLocation = String(payload?.location || "");
-    if (!toLocation) {
-      return false;
-    }
-
-    const toDate = payload?.occurred_at ? new Date(payload.occurred_at) : new Date();
-    if (Number.isNaN(toDate.getTime())) {
-      return false;
-    }
-
-    const latestActiveMove = trackingEvents.find(
-      (item) => item?.event_type === "move" && !item?.is_voided
-    );
-    if (!latestActiveMove) {
-      return false;
-    }
-
-    const fromLocation = String(latestActiveMove.location || "");
-    if (!fromLocation || fromLocation === toLocation) {
-      return false;
-    }
-
-    const fromDate = new Date(latestActiveMove.occurred_at);
-    if (Number.isNaN(fromDate.getTime())) {
-      return false;
-    }
-
-    const diffSeconds = (toDate.getTime() - fromDate.getTime()) / 1000;
-    return diffSeconds >= 0 && diffSeconds < SUSPICIOUS_TRANSITION_SECONDS;
-  }
-
-  async function loadSelectedDate(dateValue) {
-    setLoading(true);
-    setError("");
-
-    try {
-      const [payload, systemStatusResponse] = await Promise.all([
-        dateValue === todayString
-          ? fetchTodaySnapshot()
-          : fetchSnapshotByDate(dateValue),
-        fetchSystemStatus().catch(() => systemStatus),
-      ]);
-      const normalizedPayload = normalizeSnapshotPayload(payload, dateValue);
-      setSnapshot(normalizedPayload);
-      setSelectedDate(normalizedPayload.date);
-      setSystemStatus(normalizeSystemStatus(systemStatusResponse));
-      await refreshDates();
-    } catch (err) {
-      setError(getErrorMessage(err, "לא ניתן לטעון את התאריך המבוקש"));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function loadTrackingEvents(personId, dateValue) {
-    setTrackingLoading(true);
-    setError("");
-    try {
-      const [eventsResponse, transitionsResponse] = await Promise.all([
-        fetchPersonLocationEvents(personId, dateValue, { includeVoided: true }),
-        fetchPersonTransitions(personId, dateValue),
-      ]);
-      applyTrackingResponse(eventsResponse, { allowUndoStart: false });
-      setTrackingTransitions(
-        Array.isArray(transitionsResponse?.transitions)
-          ? transitionsResponse.transitions
-          : []
-      );
-    } catch (err) {
-      setTrackingEvents([]);
-      setTrackingTransitions([]);
-      setTrackingLastActionEventId("");
-      setTrackingLastActionType("");
-      setLatestTransitionWarning("");
-      setUndoExpiresAtMs(0);
-      setError(getErrorMessage(err, "טעינת מעקב מיקומים נכשלה"));
-    } finally {
-      setTrackingLoading(false);
-    }
-  }
-
-  function openTrackingModal(person) {
-    if (!person?.person_id) {
-      return;
-    }
-    setTrackingPerson(person);
-    setTrackingEvents([]);
-    setTrackingTransitions([]);
-    setTrackingLastActionEventId("");
-    setTrackingLastActionType("");
-    setLatestTransitionWarning("");
-    setUndoExpiresAtMs(0);
-    setTrackingModalOpen(true);
-    loadTrackingEvents(person.person_id, snapshot.date);
-  }
-
-  function resetTrackingModalState() {
-    setTrackingModalOpen(false);
-    setTrackingPerson(null);
-    setTrackingEvents([]);
-    setTrackingTransitions([]);
-    setTrackingLastActionEventId("");
-    setTrackingLastActionType("");
-    setLatestTransitionWarning("");
-    setUndoExpiresAtMs(0);
-  }
-
-  function handleCloseTrackingModal() {
-    if (trackingLoading || actionLoading) {
-      return;
-    }
-
-    resetTrackingModalState();
-  }
-
-  async function handleAddTrackingEvent(payload) {
-    if (!trackingPerson || isReadOnly) {
-      return;
-    }
-
-    if (shouldConfirmSuspiciousTransition(payload)) {
-      const approved = window.confirm(
-        "זוהה מעבר חשוד (פחות מ-2 דקות מהמעבר הקודם). להמשיך בכל זאת?"
-      );
-      if (!approved) {
-        return;
-      }
-    }
-
-    setTrackingLoading(true);
-    setError("");
-    try {
-      const response = await createPersonLocationEvent(
-        trackingPerson.person_id,
-        payload
-      );
-      applyTrackingResponse(response, { allowUndoStart: true });
-      const transitionsResponse = await fetchPersonTransitions(
-        trackingPerson.person_id,
-        snapshot.date
-      );
-      setTrackingTransitions(
-        Array.isArray(transitionsResponse?.transitions)
-          ? transitionsResponse.transitions
-          : []
-      );
-      await loadSelectedDate(todayString);
-    } catch (err) {
-      setError(getErrorMessage(err, "הוספת אירוע מיקום נכשלה"));
-    } finally {
-      setTrackingLoading(false);
-    }
-  }
-
-  async function handleDeleteTrackingEvent(eventId) {
-    if (!trackingPerson || !eventId || isReadOnly) {
-      return;
-    }
-
-    const approved = window.confirm("למחוק את אירוע המיקום שנבחר?");
-    if (!approved) {
-      return;
-    }
-
-    setTrackingLoading(true);
-    setError("");
-    try {
-      const response = await deletePersonLocationEvent(
-        trackingPerson.person_id,
-        eventId,
-        "correction"
-      );
-      applyTrackingResponse(response, { allowUndoStart: false });
-      const transitionsResponse = await fetchPersonTransitions(
-        trackingPerson.person_id,
-        snapshot.date
-      );
-      setTrackingTransitions(
-        Array.isArray(transitionsResponse?.transitions)
-          ? transitionsResponse.transitions
-          : []
-      );
-      await loadSelectedDate(todayString);
-    } catch (err) {
-      setError(getErrorMessage(err, "מחיקת אירוע מיקום נכשלה"));
-    } finally {
-      setTrackingLoading(false);
-    }
-  }
-
-  async function handleUndoLastTrackingAction() {
-    if (!trackingPerson || isReadOnly || !trackingLastActionEventId || undoSecondsLeft <= 0) {
-      return;
-    }
-
-    setTrackingLoading(true);
-    setError("");
-    try {
-      const response = await deletePersonLocationEvent(
-        trackingPerson.person_id,
-        trackingLastActionEventId,
-        "undo"
-      );
-      applyTrackingResponse(response, { allowUndoStart: false });
-      const transitionsResponse = await fetchPersonTransitions(
-        trackingPerson.person_id,
-        snapshot.date
-      );
-      setTrackingTransitions(
-        Array.isArray(transitionsResponse?.transitions)
-          ? transitionsResponse.transitions
-          : []
-      );
-      await loadSelectedDate(todayString);
-    } catch (err) {
-      setError(getErrorMessage(err, "ביטול הפעולה האחרונה נכשל"));
-    } finally {
-      setTrackingLoading(false);
     }
   }
 
@@ -509,6 +255,15 @@ function App() {
     link.remove();
   }
 
+  async function handleLoadSelectedDate(dateValue) {
+    if (!dateValue) {
+      setError("יש לבחור תאריך לטעינה");
+      return;
+    }
+
+    await loadDashboard(dateValue);
+  }
+
   async function handleDownloadDayFile() {
     if (!selectedDate) {
       setError("יש לבחור תאריך להורדה");
@@ -517,31 +272,15 @@ function App() {
 
     setActionLoading(true);
     setError("");
+
     try {
-      const { url, filename } = downloadDaySnapshot(selectedDate);
+      const { url, filename } = exportReports(
+        { date: selectedDate },
+        `reports_${selectedDate}.xlsx`
+      );
       triggerFileDownload(url, filename);
     } catch (err) {
-      setError(getErrorMessage(err, "הורדת קובץ היום נכשלה"));
-    } finally {
-      setActionLoading(false);
-    }
-  }
-
-  async function handleManualSaveExcel() {
-    if (!selectedDate) {
-      setError("יש לבחור תאריך לשמירה");
-      return;
-    }
-
-    setActionLoading(true);
-    setError("");
-    try {
-      const response = await saveSnapshotNow(selectedDate);
-      const savedRows = Number(response?.rows_saved || 0);
-      window.alert(`השמירה בוצעה בהצלחה. נשמרו ${savedRows} רשומות.`);
-      await refreshDates();
-    } catch (err) {
-      setError(getErrorMessage(err, "שמירת קובץ האקסל נכשלה"));
+      setError(getErrorMessage(err, "הורדת דוח היום נכשלה"));
     } finally {
       setActionLoading(false);
     }
@@ -560,28 +299,62 @@ function App() {
 
     setActionLoading(true);
     setError("");
+
     try {
-      const { url, filename } = downloadRangeSnapshots(
-        downloadFromDate,
-        downloadToDate
+      const { url, filename } = exportReports(
+        {
+          minDate: `${downloadFromDate}T00:00:00.000Z`,
+          maxDate: `${downloadToDate}T23:59:59.999Z`,
+        },
+        `reports_${downloadFromDate}_to_${downloadToDate}.xlsx`
       );
       triggerFileDownload(url, filename);
     } catch (err) {
-      setError(getErrorMessage(err, "הורדת קבצי הטווח נכשלה"));
+      setError(getErrorMessage(err, "הורדת דוחות הטווח נכשלה"));
     } finally {
       setActionLoading(false);
     }
   }
 
   async function handleQuickUpdate(personId, patch) {
+    if (isReadOnly) {
+      setError("עדכון דוחות זמין רק לתאריך של היום");
+      return;
+    }
+
+    const currentPerson = people.find((person) => person.person_id === personId);
+    if (!currentPerson) {
+      setError("לא נמצא משתמש לעדכון");
+      return;
+    }
+
+    const fallbackLocationName =
+      locations[0]?.name || currentPerson.location || locationOptions[0] || "";
+    const targetLocationName = patch.location || fallbackLocationName;
+    const targetLocationId = locationIdByName.get(targetLocationName);
+    if (!targetLocationId) {
+      setError("לא נמצא מיקום תקין עבור העדכון");
+      return;
+    }
+
+    const nextStatus = patch.daily_status || currentPerson.daily_status;
+    const isStatusOk = mapDailyStatusToReportStatus(nextStatus);
+    const payload = {
+      userId: Number(personId),
+      locationId: targetLocationId,
+      occurredAt: new Date().toISOString(),
+      source: "ui",
+      isStatusOk
+    };
+
     setActionLoading(true);
     setError("");
 
     try {
-      await quickUpdatePerson(personId, patch);
-      await loadSelectedDate(todayString);
+      await createReport(payload);
+      await loadDashboard(todayString);
     } catch (err) {
-      setError(getErrorMessage(err, "עדכון מהיר נכשל"));
+      setError(getErrorMessage(err, "יצירת הדוח נכשלה"));
     } finally {
       setActionLoading(false);
     }
@@ -594,7 +367,7 @@ function App() {
       return;
     }
 
-    if (configuredLocationOptions.includes(normalized)) {
+    if (locationOptions.includes(normalized)) {
       setError("המיקום כבר קיים ברשימה");
       return;
     }
@@ -603,9 +376,9 @@ function App() {
     setError("");
 
     try {
-      const response = await createLocation(normalized);
-      applyLocationOptions(response.locations || []);
+      await createLocation(normalized);
       setNewLocationName("");
+      await loadDashboard(selectedDate);
     } catch (err) {
       setError(getErrorMessage(err, "הוספת מיקום נכשלה"));
     } finally {
@@ -620,6 +393,12 @@ function App() {
       return;
     }
 
+    const location = locations.find((item) => item.name === normalized);
+    if (!location) {
+      setError("לא נמצא מזהה למיקום שנבחר");
+      return;
+    }
+
     const approved = window.confirm(`למחוק את המיקום "${normalized}"?`);
     if (!approved) {
       return;
@@ -629,156 +408,14 @@ function App() {
     setError("");
 
     try {
-      const response = await deleteLocation(normalized);
-      applyLocationOptions(response.locations || []);
+      await deleteLocation(location.id);
       setLocationToDelete("");
       if (locationFilter === normalized) {
         setLocationFilter("all");
       }
+      await loadDashboard(selectedDate);
     } catch (err) {
       setError(getErrorMessage(err, "מחיקת מיקום נכשלה"));
-    } finally {
-      setActionLoading(false);
-    }
-  }
-
-  async function handleAddInitialPeopleList() {
-    const names = initialPeopleInput
-      .split(/\r?\n|,/)
-      .map((item) => item.trim())
-      .filter((item) => item.length >= 2);
-
-    if (names.length === 0) {
-      setError("יש להזין לפחות שם מלא אחד (לפחות 2 תווים)");
-      return;
-    }
-
-    setActionLoading(true);
-    setError("");
-
-    try {
-      const response = await addInitialPeopleList(names);
-      setInitialPeopleInput("");
-      await loadSelectedDate(todayString);
-
-      const createdCount = Number(response?.created_count || 0);
-      const skippedCount = Number(response?.skipped_count || 0);
-      window.alert(
-        `הרשימה נקלטה בהצלחה.\nנוספו: ${createdCount}\nדולגו (כבר קיימים): ${skippedCount}`
-      );
-    } catch (err) {
-      setError(getErrorMessage(err, "הוספת רשימת שמות התחלתית נכשלה"));
-    } finally {
-      setActionLoading(false);
-    }
-  }
-
-  function openAddModal() {
-    setModalMode("add");
-    setEditingPerson(null);
-    setModalOpen(true);
-  }
-
-  function openEditModal(person) {
-    setModalMode("edit");
-    setEditingPerson(person);
-    setModalOpen(true);
-  }
-
-  async function handleModalSubmit(formData) {
-    setActionLoading(true);
-    setError("");
-
-    try {
-      if (modalMode === "add") {
-        await addPerson(formData);
-      } else if (editingPerson) {
-        await replacePerson(editingPerson.person_id, formData);
-      }
-
-      setModalOpen(false);
-      setEditingPerson(null);
-      await loadSelectedDate(todayString);
-    } catch (err) {
-      setError(getErrorMessage(err, "שמירת הנתונים נכשלה"));
-    } finally {
-      setActionLoading(false);
-    }
-  }
-
-  async function handleDeletePerson() {
-    if (!editingPerson) {
-      return;
-    }
-
-    const approved = window.confirm(`למחוק את ${editingPerson.full_name} מרשימת האנשים?`);
-    if (!approved) {
-      return;
-    }
-
-    setActionLoading(true);
-    setError("");
-
-    try {
-      await deletePerson(editingPerson.person_id);
-      setModalOpen(false);
-      setEditingPerson(null);
-      await loadSelectedDate(todayString);
-    } catch (err) {
-      setError(getErrorMessage(err, "מחיקת אדם נכשלה"));
-    } finally {
-      setActionLoading(false);
-    }
-  }
-
-  async function handleRestoreHistory() {
-    if (!isReadOnly) {
-      return;
-    }
-
-    const approved = window.confirm(
-      `האם לשחזר את הנתונים של ${snapshot.date} לתוך היום (${todayString})?`
-    );
-
-    if (!approved) {
-      return;
-    }
-
-    setActionLoading(true);
-    setError("");
-
-    try {
-      await restoreHistoryToToday(snapshot.date);
-      await loadSelectedDate(todayString);
-    } catch (err) {
-      setError(getErrorMessage(err, "שחזור ההיסטוריה נכשל"));
-    } finally {
-      setActionLoading(false);
-    }
-  }
-
-  async function handleDeleteDate() {
-    if (!isReadOnly || !snapshot.date) {
-      return;
-    }
-
-    const targetDate = snapshot.date;
-    const approved = window.confirm(
-      `האם אתה בטוח שברצונך למחוק את התאריך ${targetDate}?\nהפעולה תמחק את קובץ האקסל של התאריך ואת נתוני המעקב שלו.`
-    );
-    if (!approved) {
-      return;
-    }
-
-    setActionLoading(true);
-    setError("");
-    try {
-      await deleteSnapshotDate(targetDate);
-      resetTrackingModalState();
-      await loadSelectedDate(todayString);
-      window.alert(`התאריך ${targetDate} נמחק בהצלחה.`);
-    } catch (err) {
-      setError(getErrorMessage(err, "מחיקת התאריך נכשלה"));
     } finally {
       setActionLoading(false);
     }
@@ -789,14 +426,10 @@ function App() {
       <header className="header-card">
         <div>
           <h1>ניהול סטטוס יומי ומיקום</h1>
-          <p className="muted-text">מעקב יומי לפי Snapshot לכל תאריך</p>
-          {!isReadOnly ? (
-            <p className="muted-text auto-refresh-note">
-              {systemStatus.telegram_active
-                ? "עדכון אוטומטי פעיל כל 5 שניות"
-                : "עדכון אוטומטי כבוי - בוט טלגרם לא פעיל"}
-            </p>
-          ) : null}
+          <p className="muted-text">תצוגת משתמשים ודוחות לפי התאריך שנבחר</p>
+          <p className="muted-text auto-refresh-note">
+            ה-API החדש מבוסס על דוחות. פעולות Snapshot ישנות הושבתו זמנית.
+          </p>
         </div>
 
         <div className="header-actions">
@@ -813,7 +446,7 @@ function App() {
             <button
               className="btn btn-primary"
               data-testid="load-date-button"
-              onClick={() => loadSelectedDate(selectedDate)}
+              onClick={() => handleLoadSelectedDate(selectedDate)}
               disabled={!canLoadSelectedDate}
             >
               טען תאריך
@@ -825,60 +458,28 @@ function App() {
             >
               הורד אקסל ליום
             </button>
-            <button
-              className="btn btn-primary"
-              onClick={handleManualSaveExcel}
-              disabled={!canDownloadSelectedDate}
-            >
-              שמור אקסל
-            </button>
           </div>
-
-          {isReadOnly ? (
-            <>
-              <button
-                className="btn btn-warning"
-                onClick={handleRestoreHistory}
-                disabled={!canRunReadOnlyDateAction}
-              >
-                שחזר ליום הנוכחי
-              </button>
-              <button
-                className="btn btn-danger"
-                data-testid="delete-date-button"
-                onClick={handleDeleteDate}
-                disabled={!canRunReadOnlyDateAction}
-              >
-                מחק תאריך
-              </button>
-            </>
-          ) : null}
         </div>
       </header>
+
       <AppToolbar
         actionLoading={actionLoading}
         canAddLocation={canAddLocation}
         canChooseLocationToDelete={canChooseLocationToDelete}
         canDeleteLocation={canDeleteLocation}
-        configuredLocationOptions={configuredLocationOptions}
+        locationOptions={locationOptions}
         deletableLocationOptions={deletableLocationOptions}
         downloadFromDate={downloadFromDate}
         downloadToDate={downloadToDate}
         filteredPeopleCount={filteredPeople.length}
-        handleAddInitialPeopleList={handleAddInitialPeopleList}
         handleAddLocation={handleAddLocation}
         handleDeleteLocation={handleDeleteLocation}
         handleDownloadRangeFiles={handleDownloadRangeFiles}
-        initialPeopleInput={initialPeopleInput}
-        isReadOnly={isReadOnly}
         locationFilter={locationFilter}
         locationToDelete={locationToDelete}
         newLocationName={newLocationName}
         onDownloadFromDateChange={(event) => setDownloadFromDate(event.target.value)}
         onDownloadToDateChange={(event) => setDownloadToDate(event.target.value)}
-        onInitialPeopleInputChange={(event) =>
-          setInitialPeopleInput(event.target.value)
-        }
         onLocationFilterChange={(event) => setLocationFilter(event.target.value)}
         onLocationToDeleteChange={(event) =>
           setLocationToDelete(event.target.value)
@@ -886,7 +487,6 @@ function App() {
         onNewLocationNameChange={(event) => setNewLocationName(event.target.value)}
         onSearchTermChange={(event) => setSearchTerm(event.target.value)}
         onStatusFilterChange={(event) => setStatusFilter(event.target.value)}
-        openAddModal={openAddModal}
         searchTerm={searchTerm}
         statusFilter={statusFilter}
         todayString={todayString}
@@ -899,8 +499,8 @@ function App() {
             {availableDates.map((item) => (
               <button
                 key={item}
-                className={`btn btn-chip ${item === snapshot.date ? "active-date" : ""}`}
-                onClick={() => loadSelectedDate(item)}
+                className={`btn btn-chip ${item === selectedDate ? "active-date" : ""}`}
+                onClick={() => void handleLoadSelectedDate(item)}
               >
                 {item}
               </button>
@@ -911,7 +511,7 @@ function App() {
 
       {isReadOnly ? (
         <div className="history-banner">
-          מצב תצוגת היסטוריה: הנתונים הם כפי שנשמרו בתאריך {snapshot.date}
+          מצב תצוגת היסטוריה: מוצגים דוחות כפי שנמצאו עבור התאריך {selectedDate}
         </div>
       ) : null}
 
@@ -920,57 +520,17 @@ function App() {
       <main className="content-area">
         {loading ? (
           <div className="loading-box">טוען נתונים...</div>
+        ) : filteredPeople.length === 0 && selectedDate !== todayString ? (
+          <div className="loading-box">{REPORTS_UNAVAILABLE_MESSAGE}</div>
         ) : (
           <PersonTable
             people={filteredPeople}
-            locationOptions={configuredLocationOptions}
+            locationOptions={locationOptions}
             readOnly={isReadOnly || actionLoading}
-            telegramActive={systemStatus.telegram_active}
-            telegramMessage={systemStatus.telegram_message}
             onQuickUpdate={handleQuickUpdate}
-            onEdit={openEditModal}
-            onTrack={openTrackingModal}
           />
         )}
       </main>
-
-      <PersonFormModal
-        open={modalOpen}
-        mode={modalMode}
-        initialData={editingPerson}
-        locationOptions={configuredLocationOptions}
-        loading={actionLoading}
-        onDelete={handleDeletePerson}
-        onClose={() => {
-          if (actionLoading) {
-            return;
-          }
-          setModalOpen(false);
-          setEditingPerson(null);
-        }}
-        onSubmit={handleModalSubmit}
-      />
-
-      <PersonTrackingModal
-        open={trackingModalOpen}
-        person={trackingPerson}
-        readOnly={isReadOnly}
-        loading={trackingLoading || actionLoading}
-        locationOptions={configuredLocationOptions}
-        events={trackingEvents}
-        transitions={trackingTransitions}
-        latestTransitionWarning={latestTransitionWarning}
-        undoSecondsLeft={undoSecondsLeft}
-        canUndo={Boolean(
-          trackingLastActionEventId &&
-            trackingLastActionType === "move" &&
-            undoSecondsLeft > 0
-        )}
-        onClose={handleCloseTrackingModal}
-        onAddEvent={handleAddTrackingEvent}
-        onDeleteEvent={handleDeleteTrackingEvent}
-        onUndoLastAction={handleUndoLastTrackingAction}
-      />
     </div>
   );
 }
