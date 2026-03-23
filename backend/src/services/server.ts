@@ -11,7 +11,7 @@ import { LocationDal } from "../modules/Location/dal";
 import { createLocationRouter } from "../modules/Location/router";
 import { LocationReportDal } from "../modules/LocationReport/dal";
 import { createLocationReportRouter } from "../modules/LocationReport/router";
-
+import { BackupService } from "./backup"; 
 export const ServerConfigSchema = z.object({
   PORT: z.coerce.number().positive(),
 });
@@ -22,7 +22,11 @@ export class Server {
   private app: Express;
   private server?: http.Server;
 
-  constructor(private config: ServerConfig, private dbClient: PrismaClient) {
+  constructor(
+    private config: ServerConfig,
+    private dbClient: PrismaClient,
+    private backupService: BackupService 
+  ) {
     this.app = express();
     this.registerMiddlewares();
     this.registerRoutes();
@@ -46,8 +50,11 @@ export class Server {
     // Register routes
     this.app.use("/api/users", createUserRouter(userDal));
     this.app.use("/api/locations", createLocationRouter(locationDal));
-    this.app.use("/api/location-reports", createLocationReportRouter(locationReportDal));
 
+    this.app.use(
+      "/api/location-reports",
+      createLocationReportRouter(locationReportDal, this.backupService)
+    );
 
     this.app.get("/api/health", (_: Request, res: Response) => {
       res.sendStatus(StatusCodes.OK);
