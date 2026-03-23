@@ -3,7 +3,10 @@ import { LocationReportDal } from "./dal";
 import * as handlers from "./handlers";
 import { httpLogger } from "../../utils/decorators";
 
-export const createLocationReportRouter = (dal: LocationReportDal) => {
+export const createLocationReportRouter = (
+  dal: LocationReportDal,
+  backupService: BackupService
+) => {
   const router = Router();
   const decoratedHandlers = createDecoratedLocationReportHandlers(dal);
 
