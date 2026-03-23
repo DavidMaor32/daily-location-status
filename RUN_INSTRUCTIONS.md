@@ -1,121 +1,102 @@
-# Quick Run Instructions
+# Run Instructions
 
-This project is configured from a single YAML file:
+This document provides instructions for running the project in both Docker and native setups. The project consists of a backend (TypeScript), a frontend (Vite), and a MySQL database.
 
-- `config/app_config.yaml`
+## Prerequisites
 
-For secrets (for example Telegram token), use `.env`.
+- **Docker**: Ensure Docker and Docker Compose are installed.
+- **Node.js**: Version 18+ is required for native setup.
+- **MySQL**: Docker Compose will handle this automatically.
 
-## 1) Requirements
+## Environment Variables
 
-- Python 3.9+
-- Node.js 18+
-- npm
+The project uses an `.env` file to configure runtime variables. An example file, `.env.example`, is provided. Copy it to `.env` and update the values as needed:
 
-## 2) Check Configuration
-
-Edit:
-
-- `config/app_config.yaml`
-
-Recommended local-development values:
-
-- `storage.mode: "local"`
-- `storage.snapshot_restore_policy: "exact_snapshot"`
-- `frontend.api_base_url: ""`
-- `frontend.dev_server_port: 5173`
-- `frontend.dev_proxy_target: "http://localhost:8000"`
-
-Optional `.env`:
-
-- `TELEGRAM_BOT_TOKEN=YOUR_TOKEN`
-
-## 3) Run Backend (Terminal 1)
-
-```powershell
-cd backend
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```bash
+cp .env.example .env
 ```
 
-Health endpoint:
+### Key Variables
 
-- `http://localhost:8000/api/health`
+- **`DATABASE_URL`**: Connection string for the MySQL database. Example:
+  ```
+  DATABASE_URL=mysql://user:password@localhost:3306/database_name
+  ```
+- **`TELEGRAM_BOT_TOKEN`**: Token for the Telegram bot (if applicable).
 
-## 4) Run Frontend (Terminal 2)
+## Docker Setup
 
-```powershell
-cd frontend
-npm install
-npm run dev
-```
+1. **Build and Start Containers**:
+   ```bash
+   docker-compose up --build -d
+   ```
 
-Open app:
+2. **Verify Services**:
+   - Backend: `http://localhost:8000/api/health`
+   - Frontend: `http://localhost:5173`
 
-- `http://localhost:5173`
+3. **Stop Containers**:
+   ```bash
+   docker-compose down
+   ```
 
-## 5) Telegram Bot (Optional)
+## Native Setup
 
-Enable in `config/app_config.yaml`:
+### Backend
 
-- `telegram.enabled: true`
-- `telegram.bot_token: ""` (recommended to keep empty)
-- `telegram.allowed_remote_names: []` (empty list = no name restriction)
+1. **Install Dependencies**:
+   ```bash
+   cd backend
+   npm install
+   ```
 
-Store token in `.env`:
+2. **Run Backend**:
+   ```bash
+   npm run dev
+   ```
 
-- `TELEGRAM_BOT_TOKEN=YOUR_TOKEN`
+3. **Verify Backend**:
+   - Health endpoint: `http://localhost:8000/api/health`
 
-Conversation flow:
+### Frontend
 
-1. `/start`
-2. choose name
-3. choose location
-4. choose status (`תקין` / `לא תקין`)
-5. bot returns success/failure result
+#### Development Mode
 
-Website daily status supports three values:
+1. **Install Dependencies**:
+   ```bash
+   cd frontend
+   npm install
+   ```
 
-- `תקין`
-- `לא תקין`
-- `לא הוזן` (default for new person)
+2. **Run Frontend**:
+   ```bash
+   npm run dev
+   ```
 
-If bot is disabled:
+3. **Access Frontend**:
+   - Development server: `http://localhost:5173`
 
-- Website still works normally.
-- Self-report columns remain empty.
+#### Production Mode
 
-## 6) Initial People List (No Need to Re-enter Daily)
+1. **Build Frontend**:
+   ```bash
+   npm run build
+   ```
 
-In the main screen use **Initial Names List**:
+2. **Serve Frontend**:
+   Use a static file server (e.g., `serve` or Nginx) to serve the `dist` folder.
 
-1. Paste names (one per line or comma-separated).
-2. Click the add-list button.
-3. System adds only missing names and skips existing names.
+## Testing
 
-Result:
+- **Backend Tests**:
+  ```bash
+  cd backend
+  npm run test
+  ```
 
-- Names are stored in master (`people_master.xlsx`).
-- New daily snapshots are auto-built from master.
+- **Frontend Tests**: Not implemented yet.
 
-## 7) Common Issues
+## Notes
 
-### Backend does not start
-
-- Ensure venv is active:
-  - `.\.venv\Scripts\Activate.ps1`
-- Ensure dependencies are installed:
-  - `pip install -r requirements.txt`
-
-### Frontend cannot reach backend
-
-Check `config/app_config.yaml`:
-
-- `frontend.api_base_url: ""`
-- `frontend.dev_proxy_target: "http://localhost:8000"`
-
-### Config changes do not apply
-
-After changing `config/app_config.yaml`, restart both backend and frontend.
+- The MySQL database is managed by Docker Compose. Ensure the `DATABASE_URL` matches the database configuration in the `docker-compose.yml` file.
+- For production, ensure all environment variables are correctly set in the runtime environment.
