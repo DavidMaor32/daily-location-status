@@ -76,11 +76,6 @@ const PersonTableRow = ({
         ) : null}
       </td>
       <td>
-        <span
-          className={`status-chip ${getDailyStatusChipClass(person.daily_status)}`}
-        >
-          {person.daily_status}
-        </span>
         {!readOnly ? (
           <div className="quick-actions">
             <button
