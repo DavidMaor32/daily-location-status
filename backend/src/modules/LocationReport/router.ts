@@ -19,12 +19,18 @@ export const createLocationReportRouter = (
     "/backup",
     httpLogger(
       async (_req, res) => {
-        await backupService.runBackup();
-
-        res.json({
-          success: true,
-          message: "Backup created"
-        });
+        try {
+          await backupService.runBackup();
+          res.json({
+            success: true,
+            message: "Backup created"
+          });
+        } catch (err) {
+          res.status(500).json({
+            success: false,
+            message: "Backup failed"
+          });
+        }        
       },
       "manualBackupHandler"
     )
