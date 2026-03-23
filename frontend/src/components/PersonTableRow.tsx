@@ -106,22 +106,6 @@ const PersonTableRow = ({
             >
               לא תקין
             </button>
-            <button
-              type="button"
-              //hidden for now to decide if its needed
-              hidden
-              className={getStatusQuickButtonClass(
-                DAILY_STATUS_MISSING,
-                person.daily_status
-              )}
-              onClick={() =>
-                onQuickUpdate(person.person_id, {
-                  daily_status: DAILY_STATUS_MISSING,
-                })
-              }
-            >
-              איפוס
-            </button>
           </div>
         ) : null}
       </td>
