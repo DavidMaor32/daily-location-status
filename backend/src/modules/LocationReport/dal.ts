@@ -39,28 +39,27 @@ export class LocationReportDal {
     params: SearchQueryOptions,
   ): Promise<DBLocationReport[]> => {
     const today = new Date();
+    const p = params ?? ({} as NonNullable<SearchQueryOptions>);
 
-    const date = params?.date ?? today;
+    const date = p.date ?? today;
 
-    const minDate = moment(params?.minDate ?? date)
+    const minDate = moment(p.minDate ?? date)
       .startOf("day")
       .toDate();
-    const maxDate = moment(params?.maxDate ?? date)
+    const maxDate = moment(p.maxDate ?? date)
       .startOf("day")
       .add(1, "day")
       .toDate();
 
-    const dateFilter: Prisma.DateTimeFilter = {
-      lte: minDate,
-      gte: maxDate,
+    const where: Prisma.LocationReportWhereInput = {
+      occurredAt: { gte: minDate, lte: maxDate },
     };
 
-    return await this.model.findMany({
-      where: {
-        ...params,
-        occurredAt: dateFilter,
-      },
-    });
+    if (p.userId != null) where.userId = p.userId;
+    if (p.locationId != null) where.locationId = p.locationId;
+    if (p.isStatusOk !== undefined) where.isStatusOk = p.isStatusOk;
+
+    return await this.model.findMany({ where });
   };
 
   getReportById = async (id: number): Promise<DBLocationReport> => {
