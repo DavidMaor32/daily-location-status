@@ -9,14 +9,13 @@ import {
 import { formatTimestamp } from "../utils/dates";
 import type { QuickUpdatePatch } from "./PersonTable";
 
+// Compatibility row shape used while App.jsx adapts users + reports into the table.
 export type PersonRow = {
   person_id: string;
   full_name: string;
   location: string;
   daily_status: string;
-  self_location?: string;
-  self_daily_status?: string;
-  notes?: string;
+  phone?: string;
   last_updated?: string;
 };
 
@@ -45,20 +44,14 @@ type PersonTableRowProps = {
   person: PersonRow;
   locationOptions: string[];
   readOnly: boolean;
-  telegramActive: boolean;
   onQuickUpdate: (personId: string, patch: QuickUpdatePatch) => void;
-  onEdit: (person: PersonRow) => void;
-  onTrack: (person: PersonRow) => void;
 };
 
 const PersonTableRow = ({
   person,
   locationOptions,
   readOnly,
-  telegramActive,
   onQuickUpdate,
-  onEdit,
-  onTrack,
 }: PersonTableRowProps) => {
   return (
     <tr>
@@ -131,50 +124,8 @@ const PersonTableRow = ({
           </div>
         ) : null}
       </td>
-      <td>
-        {person.self_location ? (
-          <span
-            className={`status-chip ${getLocationChipClass(person.self_location)}`}
-          >
-            {person.self_location}
-          </span>
-        ) : telegramActive ? (
-          "-"
-        ) : (
-          ""
-        )}
-      </td>
-      <td>
-        {person.self_daily_status ? (
-          <span
-            className={`status-chip ${getDailyStatusChipClass(person.self_daily_status)}`}
-          >
-            {person.self_daily_status}
-          </span>
-        ) : telegramActive ? (
-          "-"
-        ) : (
-          ""
-        )}
-      </td>
-      <td>{person.notes || "-"}</td>
+      <td>{person.phone || "-"}</td>
       <td>{formatTimestamp(person.last_updated)}</td>
-      <td>
-        <button
-          className="btn btn-secondary"
-          data-testid={`track-person-${person.person_id}`}
-          onClick={() => onTrack(person)}
-        >
-          מעקב
-        </button>
-        <button
-          className="btn btn-secondary"
-          onClick={() => onEdit(person)}
-          disabled={readOnly}
-        >
-          עריכה
-        </button>
-      </td>
     </tr>
   );
 };

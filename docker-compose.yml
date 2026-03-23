@@ -25,6 +25,19 @@ services:
     networks:
       - daily_network
 
+  db:
+    image: mysql:8.1
+    container_name: my_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: admin
+      MYSQL_DATABASE: daily_status
+      MYSQL_PASSWORD: admin
+    ports:
+      - "3307:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+
 # זה החלק שהיה חסר וגרם לשגיאה:
 networks:
   daily_network:
@@ -32,3 +45,4 @@ networks:
 
 volumes:
   pgdata:
+  db_data:

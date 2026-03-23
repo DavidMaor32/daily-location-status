@@ -1,4 +1,4 @@
-# ------------------------------------------------------------
+found it in git: # ------------------------------------------------------------
 # Main application configuration (loaded at backend startup)
 # All non-secret settings are centralized in this YAML file
 # ------------------------------------------------------------
