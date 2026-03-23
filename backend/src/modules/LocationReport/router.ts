@@ -2,6 +2,7 @@ import { Router } from "express";
 import { LocationReportDal } from "./dal";
 import * as handlers from "./handlers";
 import { httpLogger } from "../../utils/decorators";
+import { BackupService } from "../../services/backup"; 
 
 export const createLocationReportRouter = (
   dal: LocationReportDal,
@@ -13,6 +14,21 @@ export const createLocationReportRouter = (
   router.get("/", decoratedHandlers.getReportsHandler);
   router.get("/:id", decoratedHandlers.getReportByIdHandler);
   router.post("/", decoratedHandlers.addReportHandler);
+
+  router.post(
+    "/backup",
+    httpLogger(
+      async (_req, res) => {
+        await backupService.runBackup();
+
+        res.json({
+          success: true,
+          message: "Backup created"
+        });
+      },
+      "manualBackupHandler"
+    )
+  );
 
   return router;
 };
