@@ -30,8 +30,8 @@ export class System {
       this.backupService
     );
 
+    this.backupService.start();    
     this.server.start();
-    this.backupService.start();
   } catch (err) {
     console.error("System failed to start:", err);
     throw err;
