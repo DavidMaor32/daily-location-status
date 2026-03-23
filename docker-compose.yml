@@ -38,6 +38,7 @@ services:
     volumes:
       - ./backend/storage:/app/storage
       - ./backend/data:/app/data
+      - ./backups:/app/backups
 
   frontend:
     build:
