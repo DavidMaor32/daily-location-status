@@ -87,8 +87,10 @@ function AppToolbar({
             הוסף מיקום
           </button>
         </div>
-        <div className="location-remove-row">
+        <div className="location-remove-row" >
           <select
+          //delete location not implemented yet so hidden for now
+            hidden
             value={locationToDelete}
             onChange={onLocationToDeleteChange}
             disabled={!canChooseLocationToDelete}
@@ -104,6 +106,7 @@ function AppToolbar({
             )}
           </select>
           <button
+            hidden
             className="btn btn-danger"
             onClick={handleDeleteLocation}
             disabled={!canDeleteLocation}

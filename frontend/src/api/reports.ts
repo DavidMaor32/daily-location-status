@@ -3,8 +3,8 @@ import { apiRequest, buildApiUrl, buildQueryString, type DownloadInfo } from "./
 export type Report = {
   userId: number;
   locationId: number;
-  isDailyStatusOK?: boolean;
-  occuredAt: string;
+  isStatusOk?: boolean | null;
+  occurredAt: string;
 };
 
 export type ReportFilters = {
@@ -19,8 +19,8 @@ export type ReportFilters = {
 export type CreateReportPayload = {
   userId: number;
   locationId: number;
-  isDailyStatusOK?: boolean;
-  occuredAt: string;
+  isStatusOk?: boolean;
+  occurredAt: string;
   source: "ui" | "bot";
 };
 
