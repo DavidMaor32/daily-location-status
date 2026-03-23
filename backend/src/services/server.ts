@@ -44,21 +44,12 @@ export class Server {
     );
 
     // Register routes
-<<<<<<< HEAD
     this.app.use("/api/users", createUserRouter(userDal));
     this.app.use("/api/locations", createLocationRouter(locationDal));
     this.app.use("/api/location-reports", createLocationReportRouter(locationReportDal));
 
-    this.app.get("/api/health", (_: Request, res: Response) => {
-  res.sendStatus(StatusCodes.OK);
-});
-=======
-    this.app.use("/users", createUserRouter(userDal));
-    this.app.use("/locations", createLocationRouter(locationDal));
-    this.app.use("/reports", createLocationReportRouter(locationReportDal));
->>>>>>> 1f38ae15af1cbfb6a6da9c2439b0a29f85c984ad
 
-    this.app.get("/health", (_: Request, res: Response) => {
+    this.app.get("/api/health", (_: Request, res: Response) => {
       res.sendStatus(StatusCodes.OK);
     });
   };
