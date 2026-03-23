@@ -27,4 +27,4 @@ export const SearchQueryOptionsSchema = z
     minDate: z.date(),
     maxDate: z.date(),
   })
-  .optional();
+  .partial();

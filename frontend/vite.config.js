@@ -8,14 +8,13 @@ const frontendDevProxyTarget = String(process.env.FRONTEND_DEV_PROXY_TARGET || "
 export default defineConfig({
   plugins: [react()],
   define: {
-    __API_BASE_URL__: JSON.stringify(frontendApiBaseUrl),
   },
   server: {
-    port: frontendDevPort,
     proxy: {
       "/api": {
         target: frontendDevProxyTarget,
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ""),
       },
     },
   },
