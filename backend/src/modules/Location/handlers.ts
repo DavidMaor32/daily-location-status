@@ -76,15 +76,6 @@ export const getLocationByIdHandler =
     res.status(StatusCodes.OK).json(location);
   };
 
-export const deleteLocationHandler =
-  (dal: LocationDal) => async (req: Request, res: Response) => {
-    const { id } = entityWithIdValidator(req.params);
-
-    await dal.deleteLocation(id);
-
-    res.sendStatus(StatusCodes.OK);
-  };
-
 export const addLocationsFromExcelHandler =
   (dal: LocationDal) => async (req: Request, res: Response) => {
     if (!req.file?.buffer) {
