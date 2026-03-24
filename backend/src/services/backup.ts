@@ -2,6 +2,7 @@ import { PrismaClient } from "@prisma/client";
 import { Workbook } from "exceljs";
 import * as fs from "fs";
 import * as path from "path";
+import moment from "moment";
 import logger from "../utils/logger";
 
 export class BackupService {
@@ -16,9 +17,7 @@ export class BackupService {
 
   start() {
     logger.info("BackupService started");
-
     this.runBackup();
-
     this.interval = setInterval(() => {
       this.runBackup();
     }, this.intervalMs);
@@ -52,9 +51,7 @@ export class BackupService {
       }
 
       await this.fillSheet(sheet);
-
       await workbook.xlsx.writeFile(filePath);
-
       this.cleanOldBackups(30);
 
       logger.info(`Backup saved: ${filePath}`);
@@ -77,8 +74,7 @@ export class BackupService {
     const day   = String(date.getDate()).padStart(2, "0");
     const month = String(date.getMonth() + 1).padStart(2, "0");
     const year  = date.getFullYear();
-    const dateStr = `${day}-${month}-${year}`;
-    return path.join(this.backupDir, `${dateStr}.xlsx`);
+    return path.join(this.backupDir, `${day}-${month}-${year}.xlsx`);
   }
 
   private getSheetName(date: Date): string {
@@ -95,6 +91,8 @@ export class BackupService {
   }
 
   private async fillSheet(sheet: any) {
+    // Only define columns on a new empty sheet.
+    // Redefining on an existing sheet corrupts already-written data.
     if (sheet.rowCount === 0) {
       sheet.columns = [
         { header: "User",     key: "user"     },
@@ -108,18 +106,9 @@ export class BackupService {
     startOfDay.setHours(0, 0, 0, 0);
 
     const reports = await this.prisma.locationReport.findMany({
-      where: {
-        occurredAt: {
-          gte: startOfDay,
-        },
-      },
-      include: {
-        user: true,
-        location: true,
-      },
-      orderBy: {
-        occurredAt: "asc",
-      },
+      where: { occurredAt: { gte: startOfDay } },
+      include: { user: true, location: true },
+      orderBy: { occurredAt: "asc" },
     });
 
     reports.forEach((r) => {
@@ -133,20 +122,17 @@ export class BackupService {
   }
 
   private cleanOldBackups(days: number) {
-    const files = fs.readdirSync(this.backupDir);
+    fs.readdirSync(this.backupDir)
+      .filter((file) => file.endsWith(".xlsx"))
+      .forEach((file) => {
+        const filePath = path.join(this.backupDir, file);
+        const stats = fs.statSync(filePath);
+        const ageDays = moment().diff(moment(stats.mtimeMs), "days");
 
-    files.forEach((file) => {
-      if (!file.endsWith(".xlsx")) return;
-
-      const filePath = path.join(this.backupDir, file);
-      const stats = fs.statSync(filePath);
-
-      const ageDays = (Date.now() - stats.mtimeMs) / (1000 * 60 * 60 * 24);
-
-      if (ageDays > days) {
-        fs.unlinkSync(filePath);
-        logger.info(`Deleted old backup: ${file}`);
-      }
-    });
+        if (ageDays > days) {
+          fs.unlinkSync(filePath);
+          logger.info(`Deleted old backup: ${file}`);
+        }
+      });
   }
 }
