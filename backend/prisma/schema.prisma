@@ -16,24 +16,27 @@ model User {
   fullName         String            @map("full_name")
   phone            String            @unique
   telegramUserId   String?           @map("telegram_user_id")
+  isArchived       Boolean           @map("is_archived") @default(false)
 
   locationReports  LocationReport[]
 }
 
 model Location {
-  id              Int               @id @default(autoincrement())
-  name            String            @unique
+  id              Int                 @id @default(autoincrement())
+  name            String              @unique
+  isArchived      Boolean             @map("is_archived") @default(false)
 
   locationReports LocationReport[]
 }
 
 model LocationReport {
-  id            Int      @id @default(autoincrement())
-  userId      Int      @map("user_id")
-  locationId    Int      @map("location_id")
-  occurredAt    DateTime   @default(now()) @map("occurred_at")
-  createdAt     DateTime    @default(now()) @map("created_at")
-  isStatusOk    Boolean?    @map("is_status_ok")
+  id            Int                   @id @default(autoincrement())
+  userId        Int                   @map("user_id")
+  locationId    Int                   @map("location_id")
+  occurredAt    DateTime              @default(now()) @map("occurred_at")
+  createdAt     DateTime              @default(now()) @map("created_at")
+  isStatusOk    Boolean?              @map("is_status_ok")
+  isArchived    Boolean               @map("is_archived") @default(false)
   source        Source
 
   user   User   @relation(fields: [userId], references: [id])
