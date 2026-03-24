@@ -6,41 +6,17 @@ import {
   plainLocationReportValidator,
   searchQueryOptionsValidator,
 } from "./types";
-import { Workbook } from "exceljs";
 import moment from "moment";
 
 export const exportReportsHandler =
   (dal: LocationReportDal) => async (req: Request, res: Response) => {
-    
     const params = Object.keys(req.query).length > 0 ? searchQueryOptionsValidator(req.query) : null;
-
-    const reports = await dal.getAllReports(params??{});
-
-    const workBook = new Workbook();
-    const sheet = workBook.addWorksheet('דיווח');
-
-    sheet.columns = [
-      { header: 'מספר דיווח', key: 'id', width: 20 },
-      { header: 'מספר משתמש', key: 'userId', width: 20 },
-      { header: 'מספר מיקום', key: 'locationId', width: 20 },
-      { header: 'מתי התרחש', key: 'occurredAt', width: 20 },
-      { header: 'מתי דווח', key: 'createdAt', width: 20 },
-      { header: 'סטטוס', key: 'isStatusOk', width: 20 },
-      { header: 'הערות', key: 'notes', width: 20 },
-      { header: 'מקור', key: 'source', width: 20 },
-    ];
-
-    reports.forEach(row => {
-      sheet.addRow({
-        ...row,
-        isStatusOk: row.isStatusOk === true ? "תקין" : row.isStatusOk === false ? "לא תקין" : "לא הוזן",
-      });
-    });
+    const workBook = await dal.createExcelExport(params ?? {});
 
     const dateString = moment().format('DD-MM-YYYY');
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', 'attachment; filename=' + `${dateString}.xlsx`);
-    res.status(StatusCodes.OK)
+    res.status(StatusCodes.OK);
 
     await workBook.xlsx.write(res);
     res.end();
