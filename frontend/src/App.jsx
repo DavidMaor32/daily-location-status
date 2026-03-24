@@ -98,8 +98,8 @@ function App() {
   // API Actions
   async function loadBackupFiles() {
     try {
-      // Endpoint logic from router.ts
-      const res = await fetch("/reports/backup/list");
+      // ADDED /api prefix
+      const res = await fetch("/api/reports/backup/list"); 
       if (res.ok) {
         const data = await res.json();
         setBackupFiles(Array.isArray(data) ? data : []);
@@ -110,11 +110,10 @@ function App() {
   }
 
   function handleBackupDownload(file) {
-    // encodeURIComponent handles spaces or dates in filenames safely
-    const url = `/reports/backup/download/${encodeURIComponent(file)}`;
+    // ADDED /api prefix
+    const url = `/api/reports/backup/download/${encodeURIComponent(file)}`;
     triggerFileDownload(url, file);
   }
-
   async function loadDashboard(dateValue) {
     setLoading(true);
     setError("");
