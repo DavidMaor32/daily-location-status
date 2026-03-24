@@ -1,5 +1,5 @@
 import { StatusCodes } from "http-status-codes";
-import { HttpError } from "./types";
+import { EntityName, HttpError } from "./types";
 
 export class ClientError extends HttpError {
     constructor(message: string, code = StatusCodes.BAD_REQUEST) {
@@ -8,7 +8,7 @@ export class ClientError extends HttpError {
 }
 
 export class NotFoundError extends ClientError {
-    constructor(entityName: string, id: string) {
+    constructor(entityName: EntityName, id: string) {
         super(`couldn't find ${entityName} with id: '${id}'`, StatusCodes.NOT_FOUND);
     }
 }
@@ -20,7 +20,13 @@ export class ValidationError extends ClientError {
 }
 
 export class AlreadyExistsError extends ClientError {
-    constructor(entityName: string, field: string, value: string) {
+    constructor(entityName: EntityName, field: string, value: string) {
         super(`${entityName} with ${field}: '${value}' already exists`, StatusCodes.CONFLICT);
+    }
+}
+
+export class DeletedEntityError extends ClientError {
+    constructor(entityName: EntityName, id: string) {
+        super(`${entityName} with id '${id}' is Gone`, StatusCodes.GONE);
     }
 }

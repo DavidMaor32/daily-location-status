@@ -1,6 +1,10 @@
 import { PrismaClient } from "@prisma/client";
 import { DBUser, PlainUser } from "./types";
-import { AlreadyExistsError, NotFoundError } from "../../utils/errors/client";
+import {
+  AlreadyExistsError,
+  DeletedEntityError,
+  NotFoundError,
+} from "../../utils/errors/client";
 
 export class UserDal {
   private model;
@@ -8,25 +12,40 @@ export class UserDal {
     this.model = prisma.user;
   }
 
-  getAllUsers = (): Promise<DBUser[]> => this.model.findMany();
+  getAllUsers = (): Promise<DBUser[]> =>
+    this.model.findMany({ where: { isArchived: false } });
 
   getUserById = async (id: number): Promise<DBUser> => {
-    const user = await this.model.findUnique({ where: {id} });
+    const user = await this.model.findUnique({ where: { id } });
 
-    if(!user) {
-        throw new NotFoundError('user', id.toString());
+    if (!user) {
+      throw new NotFoundError("User", id.toString());
     }
 
     return user;
-  }
+  };
 
-  updateUser = async ({id, fullName, phone, telegramUserId}: Partial<PlainUser> & { id: number, telegramUserId?: string}) => {
-    await this.getUserById(id);
+  updateUser = async ({
+    id,
+    fullName,
+    phone,
+    telegramUserId,
+  }: Partial<PlainUser> & { id: number; telegramUserId?: string }) => {
+    await this.assertNotArchived(id);
 
-    await this.model.update({where: {id}, data: {fullName, phone, telegramUserId}});
-  }
+    await this.model.update({
+      where: { id },
+      data: { fullName, phone, telegramUserId },
+    });
+  };
 
-  addUser = async ({ fullName, phone }: { fullName: string; phone: string }) => {
+  addUser = async ({
+    fullName,
+    phone,
+  }: {
+    fullName: string;
+    phone: string;
+  }) => {
     const existingUser = await this.model.findUnique({ where: { phone } });
 
     if (existingUser) {
@@ -36,10 +55,27 @@ export class UserDal {
     return this.model.create({ data: { fullName, phone } });
   };
 
-  getUserByNameAndPhone = async ({ fullName, phone }: { fullName: string; phone: string }) => {
+  deleteUser = async (id: number) => {
+    await this.model.update({
+      where: {
+        id,
+      },
+      data: {
+        isArchived: true,
+      },
+    });
+  };
+
+  getUserByNameAndPhone = async ({
+    fullName,
+    phone,
+  }: {
+    fullName: string;
+    phone: string;
+  }) => {
     return await this.model.findUnique({ where: { fullName, phone } });
   };
-  
+
   addUsersFromExcel = async (users: PlainUser[]) => {
     if (users.length === 0) {
       return { count: 0 };
@@ -48,5 +84,17 @@ export class UserDal {
       data: users,
       skipDuplicates: true,
     });
+  };
+
+  assertNotArchived = async (id: number) => {
+    const user = await this.model.findUnique({ where: { id } });
+
+    if (!user) {
+      throw new NotFoundError("User", id.toString());
+    }
+
+    if (user.isArchived) {
+      throw new DeletedEntityError("User", id.toString());
+    }
   };
 }
