@@ -1,6 +1,6 @@
 import { Prisma, PrismaClient } from "@prisma/client";
 import { DBLocationReport, PlainLocationReport } from "./types";
-import { NotFoundError } from "../../utils/errors/client";
+import { DeletedEntityError, NotFoundError } from "../../utils/errors/client";
 import { SearchQueryOptions } from "./types";
 import moment from "moment";
 import { UserDal } from "../User/dal";
@@ -11,7 +11,7 @@ export class LocationReportDal {
   constructor(
     prisma: PrismaClient,
     private userDal: UserDal,
-    private locationDal: LocationDal
+    private locationDal: LocationDal,
   ) {
     this.model = prisma.locationReport;
   }
@@ -49,6 +49,8 @@ export class LocationReportDal {
       };
     }
 
+    where.isArchived = false;
+
     return await this.model.findMany({
       where,
     });
@@ -65,27 +67,32 @@ export class LocationReportDal {
   };
 
   addReport = async (data: PlainLocationReport): Promise<DBLocationReport> => {
-    
     await this.userDal.getUserById(data.userId);
     await this.locationDal.getLocationById(data.locationId);
 
     return this.model.create({ data });
   };
 
-  getDailySummaryData = async (date: Date) => {
-    const where =  {
-        occurredAt: {
-          gte: moment(date).startOf('day').toDate(),
-          lt: moment(date).startOf('date').add(1, 'day').toDate(),
-        }
-      }
-
-    const reportsCounts = await this.model.groupBy({
-      by: ['userId'],
-      _count: {
-        id: true,
+  deleteReport = async (id: number) => {
+    await this.model.update({
+      where: {
+        id,
       },
-      where,
+      data: {
+        isArchived: true,
+      },
     });
-  }
+  };
+
+  assertNotArchived = async (id: number) => {
+    const user = await this.model.findUnique({ where: { id } });
+
+    if (!user) {
+      throw new NotFoundError("LocationReport", id.toString());
+    }
+
+    if (user.isArchived) {
+      throw new DeletedEntityError("LocationReport", id.toString());
+    }
+  };
 }

@@ -15,16 +15,21 @@ export const exportReportsHandler =
     const workBook = new Workbook();
 
     // apply logic
-    
 
-    const dateString = 'DD-MM-YYYY';
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', 'attachment; filename=' + `${dateString}.xlsx`);
-    res.status(StatusCodes.OK)
+    const dateString = "DD-MM-YYYY";
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=" + `${dateString}.xlsx`,
+    );
+    res.status(StatusCodes.OK);
 
     await workBook.xlsx.write(res);
     res.end();
-  }
+  };
 
 export const getReportsHandler =
   (dal: LocationReportDal) => async (req: Request, res: Response) => {
@@ -51,4 +56,13 @@ export const addReportHandler =
     const report = await dal.addReport(data);
 
     res.status(StatusCodes.CREATED).json(report);
+  };
+
+export const deleteReportHandler =
+  (dal: LocationReportDal) => async (req: Request, res: Response) => {
+    const { id } = entityWithIdValidator(req.params);
+
+    const reports = await dal.deleteReport(id);
+
+    res.status(StatusCodes.OK).json(reports);
   };
