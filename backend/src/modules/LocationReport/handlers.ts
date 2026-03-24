@@ -25,7 +25,7 @@ export const exportReportsHandler =
       { header: 'מספר מיקום', key: 'locationId', width: 20 },
       { header: 'מתי התרחש', key: 'occurredAt', width: 20 },
       { header: 'מתי דווח', key: 'createdAt', width: 20 },
-      { header: 'תקין', key: 'isStatusOk', width: 20 },
+      { header: 'סטטוס', key: 'isStatusOk', width: 20 },
       { header: 'הערות', key: 'notes', width: 20 },
       { header: 'מקור', key: 'source', width: 20 },
     ];
