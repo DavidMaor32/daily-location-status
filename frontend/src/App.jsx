@@ -1,11 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { createLocation, deleteLocation, fetchLocations } from "./api/locations.ts";
-import {
-  createReport,
-  exportReports,
-  fetchReports,
-} from "./api/reports.ts";
+import { fetchReports } from "./api/reports.ts";
 import { getTodayString } from "./api/helpers.ts";
 import { fetchUsers } from "./api/users.ts";
 import AppToolbar from "./components/AppToolbar";
@@ -21,8 +17,6 @@ import {
 } from "./constants/statuses.ts";
 import { getErrorMessage } from "./utils/errors.ts";
 
-const REPORTS_UNAVAILABLE_MESSAGE = "לא קיימים דוחות לתאריך שנבחר.";
-
 function App() {
   const todayString = getTodayString();
 
@@ -37,7 +31,7 @@ function App() {
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Filter States
+  // Filter & Form States
   const [searchTerm, setSearchTerm] = useState("");
   const [locationFilter, setLocationFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -54,6 +48,11 @@ function App() {
     const apiNames = locations.map((l) => l.name);
     return uniqueLocations(apiNames.length > 0 ? apiNames : DEFAULT_LOCATION_OPTIONS);
   }, [locations]);
+
+  const deletableLocationOptions = useMemo(
+    () => locationOptions.filter((l) => l !== homeLocation),
+    [locationOptions, homeLocation]
+  );
 
   const locationNameById = useMemo(() => 
     new Map(locations.map((l) => [Number(l.id), String(l.name || "")])), 
@@ -89,51 +88,19 @@ function App() {
       .sort((a, b) => a.full_name.localeCompare(b.full_name, "he"));
   }, [locationFilter, people, searchTerm, statusFilter]);
 
+  // UI Guard Logic
+  const canAddLocation = newLocationName.trim().length > 0 && !actionLoading;
+  const canChooseLocationToDelete = deletableLocationOptions.length > 0;
+  const canDeleteLocation = locationToDelete !== "" && !actionLoading;
+
   // Effects: Initial Data Load
   useEffect(() => {
     void loadDashboard(todayString);
     void loadBackupFiles();
   }, []);
 
-  // API Actions
-  async function loadBackupFiles() {
-    try {
-      // ADDED /api prefix
-      const res = await fetch("/api/reports/backup/list"); 
-      if (res.ok) {
-        const data = await res.json();
-        setBackupFiles(Array.isArray(data) ? data : []);
-      }
-    } catch (err) {
-      console.error("Failed to fetch backups", err);
-    }
-  }
+  // --- API Actions ---
 
-  // 1. For downloading EXISTING system backups (DevOps/Admin)
-  async function handleBackupDownload(file) {
-    const url = `/api/reports/backup/download/${encodeURIComponent(file)}`;
-    triggerFileDownload(url, file);
-  }
-
-  // 2. For EXPORTING data from the DB based on the Date Picker (Manager)
-  async function handleDownloadRangeFiles() {
-    // Matches the export logic usually found in LocationReport handlers
-    const url = `/api/reports/export?from=${downloadFromDate}&to=${downloadToDate}`;
-  
-    // We give it a friendly name so the manager knows what they downloaded
-    const friendlyName = `report_${downloadFromDate}_to_${downloadToDate}.xlsx`;
-    triggerFileDownload(url, friendlyName);
-  }
-
-// The helper used by both
-  async function triggerFileDownload(url, filename) {
-    const link = document.createElement("a");
-    link.href = url;
-    if (filename) link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-  }
   async function loadDashboard(dateValue) {
     setLoading(true);
     setError("");
@@ -149,7 +116,6 @@ function App() {
       setReports(dateR || []);
       setSelectedDate(dateValue);
       
-      // Extract unique dates for the history chips
       const historyDates = Array.isArray(allR) ? allR.map(r => r.occurredAt?.slice(0,10)) : [];
       setAvailableDates(Array.from(new Set([todayString, dateValue, ...historyDates]))
         .filter(Boolean).sort((a, b) => b.localeCompare(a)));
@@ -160,6 +126,58 @@ function App() {
     }
   }
 
+  async function loadBackupFiles() {
+    try {
+      const res = await fetch("/api/reports/backup/list"); 
+      if (res.ok) {
+        const data = await res.json();
+        setBackupFiles(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      console.error("Failed to fetch backups", err);
+    }
+  }
+
+  async function handleAddLocation() {
+    if (!canAddLocation) return;
+    setActionLoading(true);
+    try {
+      await createLocation({ name: newLocationName });
+      setNewLocationName("");
+      await loadDashboard(selectedDate);
+    } catch (err) {
+      setError("הוספת מיקום נכשלה");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleDeleteLocation() {
+    if (!canDeleteLocation) return;
+    const target = locations.find(l => l.name === locationToDelete);
+    if (!target) return;
+    setActionLoading(true);
+    try {
+      await deleteLocation(target.id);
+      setLocationToDelete("");
+      await loadDashboard(selectedDate);
+    } catch (err) {
+      setError("מחיקת מיקום נכשלה");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleBackupDownload(file) {
+    const url = `/api/reports/backup/download/${encodeURIComponent(file)}`;
+    triggerFileDownload(url, file);
+  }
+
+  async function handleDownloadRangeFiles() {
+    const url = `/api/reports/export?from=${downloadFromDate}&to=${downloadToDate}`;
+    triggerFileDownload(url, `report_${downloadFromDate}_to_${downloadToDate}.xlsx`);
+  }
+
   function triggerFileDownload(url, filename) {
     const link = document.createElement("a");
     link.href = url;
@@ -168,9 +186,6 @@ function App() {
     link.click();
     link.remove();
   }
-
-  // Event Handlers for UI components
-  const handleLoadSelectedDate = (date) => loadDashboard(date);
 
   return (
     <div className="app-shell" dir="rtl">
@@ -187,10 +202,7 @@ function App() {
             {backupFiles.map((file) => (
               <div key={file} className="backup-item" style={{ border: '1px solid #ddd', padding: '8px', borderRadius: '4px', background: '#f9f9f9' }}>
                 <span style={{ marginLeft: '10px' }}>{file}</span>
-                <button 
-                  className="btn btn-secondary btn-sm" 
-                  onClick={() => handleBackupDownload(file)}
-                >
+                <button className="btn btn-secondary btn-sm" onClick={() => handleBackupDownload(file)}>
                   📥 הורד
                 </button>
               </div>
@@ -200,16 +212,38 @@ function App() {
       )}
 
       <AppToolbar
+        // State & Loading
         actionLoading={actionLoading}
-        locationOptions={locationOptions}
-        locationFilter={locationFilter}
-        onLocationFilterChange={(e) => setLocationFilter(e.target.value)}
+        todayString={todayString}
+        filteredPeopleCount={filteredPeople.length}
+        
+        // Filters
         searchTerm={searchTerm}
         onSearchTermChange={(e) => setSearchTerm(e.target.value)}
+        locationFilter={locationFilter}
+        onLocationFilterChange={(e) => setLocationFilter(e.target.value)}
         statusFilter={statusFilter}
         onStatusFilterChange={(e) => setStatusFilter(e.target.value)}
-        filteredPeopleCount={filteredPeople.length}
-        // ... pass other necessary props to AppToolbar
+        
+        // Location Management
+        locationOptions={locationOptions}
+        deletableLocationOptions={deletableLocationOptions}
+        newLocationName={newLocationName}
+        onNewLocationNameChange={(e) => setNewLocationName(e.target.value)}
+        handleAddLocation={handleAddLocation}
+        canAddLocation={canAddLocation}
+        locationToDelete={locationToDelete}
+        onLocationToDeleteChange={(e) => setLocationToDelete(e.target.value)}
+        handleDeleteLocation={handleDeleteLocation}
+        canChooseLocationToDelete={canChooseLocationToDelete}
+        canDeleteLocation={canDeleteLocation}
+
+        // Export Range
+        downloadFromDate={downloadFromDate}
+        onDownloadFromDateChange={(e) => setDownloadFromDate(e.target.value)}
+        downloadToDate={downloadToDate}
+        onDownloadToDateChange={(e) => setDownloadToDate(e.target.value)}
+        handleDownloadRangeFiles={handleDownloadRangeFiles}
       />
 
       {error && <div className="error-banner">{error}</div>}
