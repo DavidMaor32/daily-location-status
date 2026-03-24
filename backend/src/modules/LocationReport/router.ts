@@ -8,8 +8,8 @@ export const createLocationReportRouter = (dal: LocationReportDal) => {
   const decoratedHandlers = createDecoratedLocationReportHandlers(dal);
 
   router.get("/", decoratedHandlers.getReportsHandler);
+  router.get("/export", decoratedHandlers.exportReportsHandler);
   router.get("/:id", decoratedHandlers.getReportByIdHandler);
-  router.post("/export", decoratedHandlers.exportReportsHandler);
   router.post("/", decoratedHandlers.addReportHandler);
 
   return router;

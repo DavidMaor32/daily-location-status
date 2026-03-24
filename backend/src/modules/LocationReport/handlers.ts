@@ -11,33 +11,31 @@ import moment from "moment";
 
 export const exportReportsHandler =
   (dal: LocationReportDal) => async (req: Request, res: Response) => {
+    
+    const params = Object.keys(req.query).length > 0 ? searchQueryOptionsValidator(req.query) : null;
 
-    const defaultParams = {
-      userId: 1,
-      locationId: 1,
-      dailyStatus: null,
-      date: new Date(),
-      minDate: new Date('2026-03-22'),
-      maxDate: new Date(),
-    };
+    const reports = await dal.getAllReports(params??{});
 
-    const params = Object.keys(req.query).length > 0 ? searchQueryOptionsValidator(req.query) : searchQueryOptionsValidator(defaultParams);
-
-    const reports = await dal.getAllReports(params);
     const workBook = new Workbook();
     const sheet = workBook.addWorksheet('דיווח');
 
     sheet.columns = [
-      { header: 'id', key: 'id', width: 20 },
-      { header: 'userId', key: 'userId', width: 20 },
-      { header: 'locationId', key: 'locationId', width: 20 },
-      { header: 'occurredAt', key: 'occurredAt', width: 20 },
-      { header: 'createdAt', key: 'createdAt', width: 20 },
-      { header: 'isStatusOk', key: 'isStatusOk', width: 20 },
-      { header: 'source', key: 'source', width: 20 },
+      { header: 'מספר דיווח', key: 'id', width: 20 },
+      { header: 'מספר משתמש', key: 'userId', width: 20 },
+      { header: 'מספר מיקום', key: 'locationId', width: 20 },
+      { header: 'מתי התרחש', key: 'occurredAt', width: 20 },
+      { header: 'מתי דווח', key: 'createdAt', width: 20 },
+      { header: 'תקין', key: 'isStatusOk', width: 20 },
+      { header: 'הערות', key: 'notes', width: 20 },
+      { header: 'מקור', key: 'source', width: 20 },
     ];
 
-    reports.forEach(row => sheet.addRow(row));
+    reports.forEach(row => {
+      sheet.addRow({
+        ...row,
+        isStatusOk: row.isStatusOk === true ? "תקין" : row.isStatusOk === false ? "לא תקין" : "לא הוזן",
+      });
+    });
 
     const dateString = moment().format('DD-MM-YYYY');
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -68,8 +66,6 @@ export const getReportByIdHandler =
 
 export const addReportHandler =
   (dal: LocationReportDal) => async (req: Request, res: Response) => {
-    req.body.occurredAt = new Date();
-    
     const data = plainLocationReportValidator(req.body);
 
     const report = await dal.addReport(data);
