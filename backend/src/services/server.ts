@@ -13,6 +13,7 @@ import { createLocationRouter } from "../modules/Location/router";
 import { LocationReportDal } from "../modules/LocationReport/dal";
 import { createLocationReportRouter } from "../modules/LocationReport/router";
 import { TelegramBot } from "./telegram/TelegramBot";
+import { BackupService } from "./backup";
 
 export const ServerConfigSchema = z.object({
   PORT: z.coerce.number().positive(),
@@ -24,7 +25,11 @@ export class Server {
   private app: Express;
   private server?: http.Server;
 
-  constructor(private config: ServerConfig, private dbClient: PrismaClient) {
+  constructor(
+    private config: ServerConfig,
+    private dbClient: PrismaClient,
+    private backupService: BackupService | null
+  ) {
     this.app = express();
     this.registerMiddlewares();
     this.registerRoutes();
@@ -45,10 +50,10 @@ export class Server {
       locationDal
     );
 
-    // Register routes
+    // Register routes — no /api prefix (matches dev branch)
     this.app.use("/users", createUserRouter(userDal));
     this.app.use("/locations", createLocationRouter(locationDal));
-    this.app.use("/reports", createLocationReportRouter(locationReportDal));
+    this.app.use("/reports", createLocationReportRouter(locationReportDal, this.backupService));
 
     this.app.get("/health", (_: Request, res: Response) => {
       res.sendStatus(StatusCodes.OK);
@@ -65,6 +70,12 @@ export class Server {
     );
 
     // Initialize Telegram Bot
+    const telegramBot = new TelegramBot(
+      userDal,
+      locationDal,
+      locationReportDal,
+      process.env.TELEGRAM_BOT_TOKEN!
+    );
     const telegramBot = new TelegramBot(userDal, locationDal, locationReportDal, process.env.TELEGRAM_BOT_TOKEN!);
     await telegramBot.launch();
   };
