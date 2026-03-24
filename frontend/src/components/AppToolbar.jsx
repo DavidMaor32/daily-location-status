@@ -34,6 +34,7 @@ function AppToolbar({
 }) {
   return (
     <section className="toolbar-card">
+      {/* Search by name */}
       <div className="filter-group compact-filter-group">
         <label>חיפוש לפי שם</label>
         <input
@@ -43,6 +44,7 @@ function AppToolbar({
         />
       </div>
 
+      {/* Location filter */}
       <div className="filter-group compact-filter-group">
         <label>פילטר מיקום</label>
         <select value={locationFilter} onChange={onLocationFilterChange}>
@@ -55,6 +57,7 @@ function AppToolbar({
         </select>
       </div>
 
+      {/* Status filter */}
       <div className="filter-group compact-filter-group">
         <label>פילטר סטטוס</label>
         <select value={statusFilter} onChange={onStatusFilterChange}>
@@ -65,6 +68,7 @@ function AppToolbar({
         </select>
       </div>
 
+      {/* Add location */}
       <div className="filter-group location-add-group">
         <label>הוספת מיקום</label>
         <div className="location-add-row">
@@ -87,9 +91,35 @@ function AppToolbar({
             הוסף מיקום
           </button>
         </div>
-        
       </div>
 
+      {/* Delete location */}
+      {deletableLocationOptions.length > 0 && canChooseLocationToDelete && (
+        <div className="filter-group location-delete-group">
+          <label>מחיקת מיקום</label>
+          <div className="location-delete-row">
+            <select
+              value={locationToDelete}
+              onChange={onLocationToDeleteChange}
+            >
+              {deletableLocationOptions.map((location) => (
+                <option key={location} value={location}>
+                  {location}
+                </option>
+              ))}
+            </select>
+            <button
+              className="btn btn-danger"
+              onClick={handleDeleteLocation}
+              disabled={!canDeleteLocation}
+            >
+              מחק
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Download range */}
       <div className="filter-group download-range-group">
         <label>הורד דוחות לפי טווח</label>
         <div className="download-range-row">
@@ -115,6 +145,7 @@ function AppToolbar({
         </div>
       </div>
 
+      {/* Summary */}
       <div className="filter-group summary-box">
         <label>סה"כ מוצגים</label>
         <strong>{filteredPeopleCount}</strong>
