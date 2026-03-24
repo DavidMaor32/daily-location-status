@@ -74,7 +74,6 @@ function App() {
   const [reports, setReports] = useState([]);
   const [locations, setLocations] = useState([]);
 
-  // NEW
   const [backupFiles, setBackupFiles] = useState([]);
 
   const [selectedDate, setSelectedDate] = useState(todayString);
@@ -157,18 +156,23 @@ function App() {
 
   useEffect(() => {
     void loadDashboard(todayString);
-    void loadBackupFiles(); // NEW
+    void loadBackupFiles();
   }, []);
 
   async function loadBackupFiles() {
     try {
-      const res = await fetch("/api/reports/backup/list");
+      const res = await fetch("/reports/backup/list");
       if (!res.ok) return;
       const data = await res.json();
       setBackupFiles(Array.isArray(data) ? data : []);
     } catch {
       // silent
     }
+  }
+
+  function handleBackupDownload(file) {
+    const url = `/reports/backup/download/${encodeURIComponent(file)}`;
+    triggerFileDownload(url, file);
   }
 
   async function loadDashboard(dateValue) {
@@ -204,18 +208,12 @@ function App() {
     link.remove();
   }
 
-  function handleBackupDownload(file) {
-    const url = `/api/reports/backup/download/${encodeURIComponent(file)}`;
-    triggerFileDownload(url, file);
-  }
-
   return (
     <div className="app-shell" dir="rtl">
       <header className="header-card">
         <h1>ניהול סטטוס יומי ומיקום</h1>
       </header>
 
-      {/* NEW BACKUP UI */}
       {backupFiles.length > 0 && (
         <section className="toolbar-card">
           <label>גיבויים זמינים</label>
@@ -231,6 +229,8 @@ function App() {
       <main className="content-area">
         {loading ? (
           <div>טוען...</div>
+        ) : filteredPeople.length === 0 && selectedDate !== todayString ? (
+          <div>{REPORTS_UNAVAILABLE_MESSAGE}</div>
         ) : (
           <PersonTable people={filteredPeople} />
         )}
