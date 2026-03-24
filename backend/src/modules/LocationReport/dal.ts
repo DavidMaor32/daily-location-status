@@ -66,12 +66,8 @@ export class LocationReportDal {
 
   addReport = async (data: PlainLocationReport): Promise<DBLocationReport> => {
     
-    const existingUserId = await this.userDal.getUserById(data.userId);
-    const existingLocationId = await this.locationDal.getLocationById(data.locationId);
-
-    if (!existingUserId || !existingLocationId) {
-      throw new NotFoundError("Not Found", !existingUserId && !existingLocationId? `Location ${data.locationId.toString()} and User ${data.userId.toString()}` : existingLocationId? `User ${data.userId.toString()}` : `Location ${data.locationId.toString()}`);
-    }
+    await this.userDal.getUserById(data.userId);
+    await this.locationDal.getLocationById(data.locationId);
 
     return this.model.create({ data });
   };

@@ -14,7 +14,7 @@ export class UserDal {
     const user = await this.model.findUnique({ where: {id} });
 
     if(!user) {
-        throw new NotFoundError('user', id.toString());
+        throw new NotFoundError('User', id.toString());
     }
 
     return user;
