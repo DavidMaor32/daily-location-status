@@ -109,11 +109,31 @@ function App() {
     }
   }
 
-  function handleBackupDownload(file) {
-    // ADDED /api prefix
+  // 1. For downloading EXISTING system backups (DevOps/Admin)
+  async function handleBackupDownload(file) {
     const url = `/api/reports/backup/download/${encodeURIComponent(file)}`;
     triggerFileDownload(url, file);
   }
+
+  // 2. For EXPORTING data from the DB based on the Date Picker (Manager)
+  async function handleDownloadRangeFiles() {
+    // Matches the export logic usually found in LocationReport handlers
+    const url = `/api/reports/export?from=${downloadFromDate}&to=${downloadToDate}`;
+  
+    // We give it a friendly name so the manager knows what they downloaded
+    const friendlyName = `report_${downloadFromDate}_to_${downloadToDate}.xlsx`;
+    triggerFileDownload(url, friendlyName);
+  }
+
+// The helper used by both
+function triggerFileDownload(url, filename) {
+  const link = document.createElement("a");
+  link.href = url;
+  if (filename) link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
   async function loadDashboard(dateValue) {
     setLoading(true);
     setError("");
