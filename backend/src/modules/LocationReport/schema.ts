@@ -10,7 +10,7 @@ export const PlainLocationReportSchema = z.object({
   locationId: z.number(),
   occurredAt: z.coerce.date(),
   isStatusOk: DailyStatusOkSchema,
-  notes: z.string().nullish(),
+  notes: z.string().nullable(),
   source: ReportSourceSchema,
 });
 
