@@ -1,6 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { DBLocation, PlainLocation } from "./types";
-import { NotFoundError, AlreadyExistsError } from "../../utils/errors/client";
+import { NotFoundError, AlreadyExistsError, DeletedEntityError } from "../../utils/errors/client";
 
 export class LocationDal {
   private model;
@@ -8,7 +8,7 @@ export class LocationDal {
     this.model = prisma.location;
   }
 
-  getAllLocations = (): Promise<DBLocation[]> => this.model.findMany();
+  getAllLocations = (): Promise<DBLocation[]> => this.model.findMany({ where: { isArchived: false }});
 
   getLocationById = async (id: number): Promise<DBLocation> => {
     const location = await this.model.findUnique({ where: { id } });
@@ -39,13 +39,27 @@ export class LocationDal {
       skipDuplicates: true,
     });
   };
+
   deleteLocation = async (id: number): Promise<void> => {
-    const existing = await this.model.findUnique({ where: { id } });
+    this.model.update({
+      where: {
+        id
+      },
+      data: {
+        isArchived: true
+      }
+    })
+  };
 
-    if (!existing) {
-      throw new NotFoundError("Location", id.toString());
-    }
-
-    await this.model.delete({ where: { id } });
+  assertNotArchived = async (id: number) => {
+      const user = await this.model.findUnique({ where: { id } });
+    
+      if (!user) {
+        throw new NotFoundError('Location', id.toString());
+      }
+  
+      if (user.isArchived) {
+        throw new DeletedEntityError('Location', id.toString());
+      }
   };
 }
