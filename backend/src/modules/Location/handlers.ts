@@ -1,8 +1,53 @@
 import { Request, Response } from "express";
+import XLSX from "xlsx";
 import { LocationDal } from "./dal";
-import { plainLocationValidator } from "./types";
+import {
+  plainLocationValidator,
+  plainLocationSchemeExcelValidator,
+  PlainLocation,
+} from "./types";
 import { StatusCodes } from "http-status-codes";
 import { entityWithIdValidator } from "../../utils/validations";
+import { ValidationError } from "../../utils/errors/client";
+
+const EXCEL_COLUMN_MAP: Record<string, keyof PlainLocation> = {
+  name: "name",
+  "שם": "name",
+  "מיקום": "name",
+  location: "name",
+  "location name": "name",
+};
+
+const normalizeHeader = (header: string) =>
+  String(header ?? "")
+    .trim()
+    .toLowerCase();
+
+const parseExcelToLocations = (filePathOrBuffer: string | Buffer): PlainLocation[] => {
+  const workbook =
+    typeof filePathOrBuffer === "string"
+      ? XLSX.readFile(filePathOrBuffer)
+      : XLSX.read(filePathOrBuffer, { type: "buffer" });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet);
+
+  return rows
+    .map((row) => {
+      const mapped: Record<string, string> = {};
+      for (const [key, value] of Object.entries(row)) {
+        const normalized = normalizeHeader(key);
+        const field = EXCEL_COLUMN_MAP[normalized];
+        if (field && value != null && value !== "") {
+          mapped[field] = String(value).trim();
+        }
+      }
+      if (mapped.name) {
+        return { name: mapped.name };
+      }
+      return null;
+    })
+    .filter((l): l is PlainLocation => l !== null);
+};
 
 export const createLocationHandler =
   (dal: LocationDal) => async (req: Request, res: Response) => {
@@ -29,6 +74,21 @@ export const getLocationByIdHandler =
     res.status(StatusCodes.OK).json(location);
   };
 
+export const addLocationsFromExcelHandler =
+  (dal: LocationDal) => async (req: Request, res: Response) => {
+    if (!req.file?.buffer) {
+      throw new ValidationError(
+        "No file uploaded. Send form-data with key 'file'."
+      );
+    }
+
+    const parsedLocations = parseExcelToLocations(req.file.buffer);
+    const locationsFromExcel = plainLocationSchemeExcelValidator(parsedLocations);
+
+    const result = await dal.addLocationsFromExcel(locationsFromExcel);
+
+    res.status(StatusCodes.CREATED).json(result);
+  };
 export const deleteLocationHandler =
   (dal: LocationDal) => async (req: Request, res: Response) => {
     const { id } = entityWithIdValidator(req.params);
