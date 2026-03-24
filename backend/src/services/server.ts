@@ -51,9 +51,9 @@ export class Server {
     );
 
     // Register routes — no /api prefix (matches dev branch)
-    this.app.use("/api/users", createUserRouter(userDal));
-    this.app.use("/api/locations", createLocationRouter(locationDal));
-    this.app.use("/api/reports", createLocationReportRouter(locationReportDal, this.backupService));
+    this.app.use("/users", createUserRouter(userDal));
+    this.app.use("locations", createLocationRouter(locationDal));
+    this.app.use("/reports", createLocationReportRouter(locationReportDal, this.backupService));
 
     this.app.get("/health", (_: Request, res: Response) => {
       res.sendStatus(StatusCodes.OK);
@@ -76,7 +76,6 @@ export class Server {
       locationReportDal,
       process.env.TELEGRAM_BOT_TOKEN!
     );
-    // duplication : const telegramBot = new TelegramBot(userDal, locationDal, locationReportDal, process.env.TELEGRAM_BOT_TOKEN!);
     await telegramBot.launch();
   };
 
