@@ -1,6 +1,10 @@
 import { PrismaClient } from "@prisma/client";
 import { DBUser, PlainUser } from "./types";
-import { AlreadyExistsError, DeletedEntityError, NotFoundError } from "../../utils/errors/client";
+import {
+  AlreadyExistsError,
+  DeletedEntityError,
+  NotFoundError,
+} from "../../utils/errors/client";
 
 export class UserDal {
   private model;
@@ -51,6 +55,17 @@ export class UserDal {
     return this.model.create({ data: { fullName, phone } });
   };
 
+  deleteUser = async (id: number) => {
+    await this.model.update({
+      where: {
+        id,
+      },
+      data: {
+        isArchived: true,
+      },
+    });
+  };
+
   getUserByNameAndPhone = async ({
     fullName,
     phone,
@@ -73,13 +88,13 @@ export class UserDal {
 
   assertNotArchived = async (id: number) => {
     const user = await this.model.findUnique({ where: { id } });
-  
+
     if (!user) {
       throw new NotFoundError("User", id.toString());
     }
 
     if (user.isArchived) {
-      throw new DeletedEntityError('User', id.toString());
+      throw new DeletedEntityError("User", id.toString());
     }
   };
 }

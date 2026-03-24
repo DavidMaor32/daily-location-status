@@ -4,7 +4,12 @@ import XLSX from "xlsx";
 import { ValidationError } from "../../utils/errors/client";
 import { entityWithIdValidator } from "../../utils/validations";
 import { UserDal } from "./dal";
-import { partialPlainUserValidator, PlainUser, plainUserSchemeExcelValidator, plainUserValidator } from "./types";
+import {
+  partialPlainUserValidator,
+  PlainUser,
+  plainUserSchemeExcelValidator,
+  plainUserValidator,
+} from "./types";
 
 const EXCEL_COLUMN_MAP: Record<string, keyof PlainUser> = {
   fullname: "fullName",
@@ -63,6 +68,15 @@ export const getUserByIdHandler =
     res.status(StatusCodes.OK).json(user);
   };
 
+export const deleteUserHandler =
+  (dal: UserDal) => async (req: Request, res: Response) => {
+    const { id } = entityWithIdValidator(req.params);
+
+    await dal.deleteUser(id);
+
+    res.sendStatus(StatusCodes.OK);
+  };
+
 export const updateUser =
   (dal: UserDal) => async (req: Request, res: Response) => {
     const { id } = entityWithIdValidator(req.params);
@@ -85,11 +99,13 @@ export const AddUserHandler =
 export const AddUsersFromExcelHandler =
   (dal: UserDal) => async (req: Request, res: Response) => {
     if (!req.file?.buffer) {
-      throw new ValidationError("No file uploaded. Send form-data with key 'file'.");
+      throw new ValidationError(
+        "No file uploaded. Send form-data with key 'file'.",
+      );
     }
 
     const parsedUsers = parseExcelToUsers(req.file.buffer);
-    const usersFromExcel = plainUserSchemeExcelValidator(parsedUsers)
+    const usersFromExcel = plainUserSchemeExcelValidator(parsedUsers);
 
     const result = await dal.addUsersFromExcel(usersFromExcel);
 
