@@ -126,14 +126,14 @@ function App() {
   }
 
 // The helper used by both
-function triggerFileDownload(url, filename) {
-  const link = document.createElement("a");
-  link.href = url;
-  if (filename) link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-}
+  async function triggerFileDownload(url, filename) {
+    const link = document.createElement("a");
+    link.href = url;
+    if (filename) link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }
   async function loadDashboard(dateValue) {
     setLoading(true);
     setError("");
