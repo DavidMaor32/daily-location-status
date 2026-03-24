@@ -4,7 +4,6 @@ import {
   DAILY_STATUS_BAD,
   DAILY_STATUS_MISSING,
   DAILY_STATUS_OK,
-  getDailyStatusChipClass,
 } from "../constants/statuses";
 import { formatTimestamp } from "../utils/dates";
 import type { QuickUpdatePatch } from "./PersonTable";
