@@ -4,14 +4,13 @@ import {
   DAILY_STATUS_OK,
 } from "../constants/statuses.ts";
 
-// Toolbar section for filters, location management, report exports, and summary.
 function AppToolbar({
   actionLoading,
   canAddLocation,
   canChooseLocationToDelete,
   canDeleteLocation,
-  locationOptions,
-  deletableLocationOptions,
+  locationOptions = [], // Default to empty array
+  deletableLocationOptions = [], // Default to empty array
   downloadFromDate,
   downloadToDate,
   filteredPeopleCount,
@@ -102,6 +101,7 @@ function AppToolbar({
               value={locationToDelete}
               onChange={onLocationToDeleteChange}
             >
+              <option value="">בחר מיקום למחיקה...</option>
               {deletableLocationOptions.map((location) => (
                 <option key={location} value={location}>
                   {location}
