@@ -87,30 +87,7 @@ function AppToolbar({
             הוסף מיקום
           </button>
         </div>
-        <div className="location-remove-row">
-          <select
-            value={locationToDelete}
-            onChange={onLocationToDeleteChange}
-            disabled={!canChooseLocationToDelete}
-          >
-            {deletableLocationOptions.length === 0 ? (
-              <option value="">אין מיקומים למחיקה</option>
-            ) : (
-              deletableLocationOptions.map((location) => (
-                <option key={location} value={location}>
-                  {location}
-                </option>
-              ))
-            )}
-          </select>
-          <button
-            className="btn btn-danger"
-            onClick={handleDeleteLocation}
-            disabled={!canDeleteLocation}
-          >
-            מחק מיקום
-          </button>
-        </div>
+        
       </div>
 
       <div className="filter-group download-range-group">

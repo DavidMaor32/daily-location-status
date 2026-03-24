@@ -46,16 +46,16 @@ const getLatestReportForUser = (reports, userId) =>
     .filter((report) => Number(report?.userId) === Number(userId))
     .sort(
       (left, right) =>
-        new Date(right?.occuredAt || 0).getTime() -
-        new Date(left?.occuredAt || 0).getTime()
+        new Date(right?.occurredAt || 0).getTime() -
+        new Date(left?.occurredAt || 0).getTime()
     )[0];
 
-const mapReportStatusToDailyStatus = (isDailyStatusOK) => {
-  if (isDailyStatusOK === true) {
+const mapReportStatusToDailyStatus = (isStatusOk) => {
+  if (isStatusOk === true) {
     return DAILY_STATUS_OK;
   }
 
-  if (isDailyStatusOK === false) {
+  if (isStatusOk === false) {
     return DAILY_STATUS_BAD;
   }
 
@@ -71,13 +71,13 @@ const mapDailyStatusToReportStatus = (dailyStatus) => {
     return false;
   }
 
-  return undefined;
+  return null;
 };
 
 const buildAvailableDates = (reports, todayString, selectedDate) => {
   const allDates = Array.isArray(reports)
     ? reports
-        .map((report) => getReportLocalDate(report?.occuredAt))
+        .map((report) => getReportLocalDate(report?.occurredAt))
         .filter(Boolean)
     : [];
 
@@ -145,11 +145,11 @@ function App() {
 
       return {
         person_id: String(user.id),
-        full_name: String(user.name || ""),
+        full_name: String(user.fullName || ""),
         location,
-        daily_status: mapReportStatusToDailyStatus(latestReport?.isDailyStatusOK),
+        daily_status: mapReportStatusToDailyStatus(latestReport?.isStatusOk),
         phone: user.phone ? String(user.phone) : "",
-        last_updated: latestReport?.occuredAt || "",
+        last_updated: latestReport?.occurredAt || "",
       };
     });
   }, [locationNameById, reports, users]);
@@ -328,26 +328,24 @@ function App() {
       return;
     }
 
-    const targetLocationName =
-      patch.location || currentPerson.location || locationOptions[0] || "";
+    const fallbackLocationName =
+      locations[0]?.name || currentPerson.location || locationOptions[0] || "";
+    const targetLocationName = patch.location || fallbackLocationName;
     const targetLocationId = locationIdByName.get(targetLocationName);
     if (!targetLocationId) {
-      setError("לא נמצא מזהה מיקום עבור העדכון");
+      setError("לא נמצא מיקום תקין עבור העדכון");
       return;
     }
 
     const nextStatus = patch.daily_status || currentPerson.daily_status;
-    const isDailyStatusOK = mapDailyStatusToReportStatus(nextStatus);
+    const isStatusOk = mapDailyStatusToReportStatus(nextStatus);
     const payload = {
       userId: Number(personId),
       locationId: targetLocationId,
-      occuredAt: new Date().toISOString(),
+      occurredAt: new Date().toISOString(),
       source: "ui",
+      isStatusOk
     };
-
-    if (typeof isDailyStatusOK === "boolean") {
-      payload.isDailyStatusOK = isDailyStatusOK;
-    }
 
     setActionLoading(true);
     setError("");

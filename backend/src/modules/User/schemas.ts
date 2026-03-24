@@ -12,3 +12,5 @@ export const DBUserScheme = PlainUserScheme.extend({
     telegramUserId: z.string().nullable(),
     phone: z.string()
 });
+
+export const PlainUserExcelScheme = z.array(PlainUserScheme);

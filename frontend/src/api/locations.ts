@@ -5,18 +5,18 @@ export type Location = {
   name: string;
 };
 
-export const fetchLocations = () => apiRequest<Location[]>("/api/locations");
+export const fetchLocations = () => apiRequest<Location[]>("/locations");
 
 export const fetchLocationById = (locationId: number) =>
-  apiRequest<Location>(`/api/locations/${locationId}`);
+  apiRequest<Location>(`/locations/${locationId}`);
 
 export const createLocation = (name: string) =>
-  apiRequest<Location>("/api/locations", {
+  apiRequest<Location>("/locations", {
     method: "POST",
     data: { name },
   });
 
 export const deleteLocation = (locationId: number) =>
-  apiRequest(`/api/locations/${locationId}`, {
+  apiRequest(`/locations/${locationId}`, {
     method: "DELETE",
   });

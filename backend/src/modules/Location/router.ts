@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { excelUpload } from "../../utils/middlewares";
 import { LocationDal } from "./dal";
 import * as handlers from "./handlers";
 import { httpLogger } from "../../utils/decorators";
@@ -10,6 +11,7 @@ export const createLocationRouter = (dal: LocationDal) => {
   router.get("/", decoratedHandlers.getAllLocationsHandler);
   router.get("/:id", decoratedHandlers.getLocationByIdHandler);
   router.post("/", decoratedHandlers.createLocationHandler);
+  router.post("/excel", excelUpload.single("file"), decoratedHandlers.addLocationsFromExcelHandler);
   router.delete("/:id", decoratedHandlers.deleteLocationHandler);
 
   return router;
@@ -27,6 +29,10 @@ export const createDecoratedLocationHandlers = (dal: LocationDal) => ({
   createLocationHandler: httpLogger(
     handlers.createLocationHandler(dal),
     "createLocationHandler"
+  ),
+  addLocationsFromExcelHandler: httpLogger(
+    handlers.addLocationsFromExcelHandler(dal),
+    "addLocationsFromExcel"
   ),
   deleteLocationHandler: httpLogger(
     handlers.deleteLocationHandler(dal),

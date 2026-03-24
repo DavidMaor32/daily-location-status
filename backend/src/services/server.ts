@@ -76,6 +76,7 @@ export class Server {
       locationReportDal,
       process.env.TELEGRAM_BOT_TOKEN!
     );
+    const telegramBot = new TelegramBot(userDal, locationDal, locationReportDal, process.env.TELEGRAM_BOT_TOKEN!);
     await telegramBot.launch();
   };
 
