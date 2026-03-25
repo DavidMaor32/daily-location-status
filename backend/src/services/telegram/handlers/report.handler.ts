@@ -52,9 +52,10 @@ export const reportHandler = async (bot: Telegraf<MyBotContext>, userDal: UserDa
     bot.on("text", async (ctx) => {
         if (ctx.session.step === "WAITING_FOR_LOCATION") {
             const locations = await locationDal.getAllLocations();
+            const locationNames = locations.map((l) => l.name);
             const location = locations.find((l) => l.name === ctx.message.text);
             if (!location) {
-            return ctx.reply("נא לבחור מיקום מהרשימה.");
+            return ctx.reply("נא לבחור מיקום מהרשימה.", locationKeyboard(locationNames));
             }
             ctx.session.locationId = location.id;
             ctx.session.step = "WAITING_FOR_STATUS";
