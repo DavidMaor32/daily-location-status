@@ -38,7 +38,7 @@ export const registerHandler = (bot: Telegraf<MyBotContext>, userDal: UserDal) =
 
             await userDal.updateUser({id: user.id, telegramUserId: ctx.message.from.id.toString()});
 
-            ctx.session.step = undefined;
+            ctx.session.step = "WAITING_FOR_STATUS_REPORT";
 
             return ctx.reply("ההרשמה בוצעה בהצלחה!", mainKeyboard());
         }

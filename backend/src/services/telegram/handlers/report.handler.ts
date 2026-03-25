@@ -44,7 +44,7 @@ export const reportHandler = async (bot: Telegraf<MyBotContext>, userDal: UserDa
 
         ctx.session.step = undefined;
         const location = await locationDal.getLocationById(ctx.session.locationId!);
-        ctx.reply(`ההזנה נקלטה בהצלחה!\nשם: ${ctx.session.fullName}.\nמיקום: ${location?.name}.\nסטטוס: ${ctx.session.isStatusOk ? "תקין" : "לא תקין"}.\nהערות: ללא.`);
+        await ctx.reply(`ההזנה נקלטה בהצלחה!\nשם: ${ctx.session.fullName}.\nמיקום: ${location?.name}.\nסטטוס: ${ctx.session.isStatusOk ? "תקין" : "לא תקין"}.\nהערות: ללא.`);
         return ctx.reply("רוצה לעדכן שוב?", mainKeyboard());
     });
 
@@ -62,10 +62,23 @@ export const reportHandler = async (bot: Telegraf<MyBotContext>, userDal: UserDa
             return ctx.reply("מה הסטטוס שלך?", statusKeyboard());
         }
 
+        if (ctx.session.step === "WAITING_FOR_NOTES") {
+            if (ctx.message.text !== "כן" && ctx.message.text !== "לא") {
+                await ctx.reply("נא לבחור בכן או לא.")
+                ctx.reply("יש לך הערות להוסיף?", addNotesDialogueKeyboard());
+            }
+        }
+
+        if (ctx.session.step === "WAITING_FOR_STATUS_REPORT") {
+            if (ctx.message.text !== "הזנת סטטוס") {
+                ctx.reply("בשביל להתחיל אנא ללחוץ על ה\"הזנת סטטוס\".", mainKeyboard());
+            }
+        }
+
         if (ctx.session.step === "WAITING_FOR_STATUS") {
             if (ctx.message.text !== "תקין" && ctx.message.text !== "לא תקין") {
-                await ctx.reply("נא לבחור סטטוס מבין שתי האפשרויות.")
-                return ctx.reply("מה הסטטוס שלך?", statusKeyboard());
+                await ctx.reply("נא לבחור בסטטוס מבין שתי האפשרויות.")
+                ctx.reply("מה הסטטוס שלך?", statusKeyboard());
             }
         }
 
@@ -81,7 +94,7 @@ export const reportHandler = async (bot: Telegraf<MyBotContext>, userDal: UserDa
         });
         ctx.session.step = undefined;
         const location = await locationDal.getLocationById(ctx.session.locationId!);
-        ctx.reply(`ההזנה נקלטה בהצלחה!\nשם: ${ctx.session.fullName}.\nמיקום: ${location?.name}.\nסטטוס: ${ctx.session.isStatusOk ? "תקין" : "לא תקין"}.\nהערות: ${ctx.session.notes}.`);
+        await ctx.reply(`ההזנה נקלטה בהצלחה!\nשם: ${ctx.session.fullName}.\nמיקום: ${location?.name}.\nסטטוס: ${ctx.session.isStatusOk ? "תקין" : "לא תקין"}.\nהערות: ${ctx.session.notes}.`);
         return ctx.reply("רוצה לעדכן שוב?", mainKeyboard());
     }
 });
