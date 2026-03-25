@@ -1,93 +1,63 @@
 import { Router } from "express";
-import * as fs from "fs";
-import * as path from "path";
 import { LocationReportDal } from "./dal";
 import * as handlers from "./handlers";
 import { httpLogger } from "../../utils/decorators";
 import { BackupService } from "../../services/backup";
-
-const BACKUP_DIR = "/app/backups";
 
 export const createLocationReportRouter = (
   dal: LocationReportDal,
   backupService: BackupService | null
 ) => {
   const router = Router();
-  const decoratedHandlers = createDecoratedLocationReportHandlers(dal);
+  
+  // 1. Decorate standard handlers
+  const reportHandlers = createDecoratedLocationReportHandlers(dal);
 
-  router.get("/", decoratedHandlers.getReportsHandler);
-  router.get("/:id", decoratedHandlers.getReportByIdHandler);
-  router.post("/", decoratedHandlers.addReportHandler);
+  // 2. Define standard routes
+  router.get("/", reportHandlers.getReportsHandler);
+  router.get("/:id", reportHandlers.getReportByIdHandler);
+  router.post("/", reportHandlers.addReportHandler);
 
+  // 3. Define backup routes (if service is available)
   if (backupService) {
-    // Manual backup (already exists)
-    router.post(
-      "/backup",
-      httpLogger(async (_req, res) => {
-        await backupService.runBackup();
-        res.json({
-          success: true,
-          message: "Backup created",
-        });
-      }, "manualBackupHandler")
-    );
-
-    // NEW — list files
-    router.get(
-      "/backup/list",
-      httpLogger(async (_req, res) => {
-        if (!fs.existsSync(BACKUP_DIR)) {
-          return res.json([]);
-        }
-
-        const files = fs
-          .readdirSync(BACKUP_DIR)
-          .filter((f) => f.endsWith(".xlsx"))
-          .sort()
-          .reverse();
-
-        res.json(files);
-      }, "backupListHandler")
-    );
-
-    // NEW — download file
-    router.get(
-      "/backup/download/:file",
-      httpLogger(async (req, res) => {
-        const fileName = req.params.file;
-
-        // SECURITY
-        if (!fileName || fileName.includes("/") || fileName.includes("..")) {
-          return res.status(400).json({ error: "Invalid filename" });
-        }
-
-        const filePath = path.join(BACKUP_DIR, fileName);
-
-        if (!fs.existsSync(filePath)) {
-          return res.status(404).json({ error: "File not found" });
-        }
-
-        res.download(filePath);
-      }, "backupDownloadHandler")
-    );
+    const backupHandlers = createDecoratedBackupHandlers(backupService);
+    
+    router.post("/backup", backupHandlers.manualBackupHandler);
+    router.get("/backup/list", backupHandlers.getBackupListHandler);
+    router.get("/backup/download/:file", backupHandlers.downloadBackupHandler);
   }
 
   return router;
 };
 
-export const createDecoratedLocationReportHandlers = (
-  dal: LocationReportDal
-) => ({
+// HELPER: Wraps report handlers with logging
+export const createDecoratedLocationReportHandlers = (dal: LocationReportDal) => ({
   getReportsHandler: httpLogger(
-    handlers.getReportsHandler(dal),
+    handlers.getReportsHandler(dal), 
     "getReportsHandler"
   ),
   getReportByIdHandler: httpLogger(
-    handlers.getReportByIdHandler(dal),
+    handlers.getReportByIdHandler(dal), 
     "getReportByIdHandler"
   ),
   addReportHandler: httpLogger(
-    handlers.addReportHandler(dal),
+    handlers.addReportHandler(dal), 
     "addReportHandler"
+  ),
+});
+
+// HELPER: Wraps backup handlers with logging
+export const createDecoratedBackupHandlers = (backupService: BackupService) => ({
+  manualBackupHandler: httpLogger(
+    handlers.manualBackupHandler(backupService), 
+    "manualBackupHandler"
+  ),
+  getBackupListHandler: httpLogger(
+    handlers.getBackupListHandler(), 
+    "getBackupListHandler"
+  ),
+  downloadBackupHandler: httpLogger(
+    handlers.downloadBackupHandler(), 
+    "backupDownloadHandler"
   ),
 });
