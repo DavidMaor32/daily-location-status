@@ -10,15 +10,16 @@ export const createLocationReportRouter = (
 ) => {
   const router = Router();
   
-  // 1. Decorate standard handlers
+  // 1. Decorate report and export handlers
   const reportHandlers = createDecoratedLocationReportHandlers(dal);
 
-  // 2. Define standard routes
+  // 2. Define standard routes (Merged dev /export here)
   router.get("/", reportHandlers.getReportsHandler);
+  router.get("/export", reportHandlers.exportReportsHandler);
   router.get("/:id", reportHandlers.getReportByIdHandler);
   router.post("/", reportHandlers.addReportHandler);
 
-  // 3. Define backup routes (if service is available)
+  // 3. Define backup routes
   if (backupService) {
     const backupHandlers = createDecoratedBackupHandlers(backupService);
     
@@ -30,34 +31,17 @@ export const createLocationReportRouter = (
   return router;
 };
 
-// HELPER: Wraps report handlers with logging
+// Helper for Report Logging
 export const createDecoratedLocationReportHandlers = (dal: LocationReportDal) => ({
-  getReportsHandler: httpLogger(
-    handlers.getReportsHandler(dal), 
-    "getReportsHandler"
-  ),
-  getReportByIdHandler: httpLogger(
-    handlers.getReportByIdHandler(dal), 
-    "getReportByIdHandler"
-  ),
-  addReportHandler: httpLogger(
-    handlers.addReportHandler(dal), 
-    "addReportHandler"
-  ),
+  getReportsHandler: httpLogger(handlers.getReportsHandler(dal), "getReportsHandler"),
+  exportReportsHandler: httpLogger(handlers.exportReportsHandler(dal), "exportReportsHandler"),
+  getReportByIdHandler: httpLogger(handlers.getReportByIdHandler(dal), "getReportByIdHandler"),
+  addReportHandler: httpLogger(handlers.addReportHandler(dal), "addReportHandler"),
 });
 
-// HELPER: Wraps backup handlers with logging
+// Helper for Backup Logging
 export const createDecoratedBackupHandlers = (backupService: BackupService) => ({
-  manualBackupHandler: httpLogger(
-    handlers.manualBackupHandler(backupService), 
-    "manualBackupHandler"
-  ),
-  getBackupListHandler: httpLogger(
-    handlers.getBackupListHandler(), 
-    "getBackupListHandler"
-  ),
-  downloadBackupHandler: httpLogger(
-    handlers.downloadBackupHandler(), 
-    "backupDownloadHandler"
-  ),
+  manualBackupHandler: httpLogger(handlers.manualBackupHandler(backupService), "manualBackupHandler"),
+  getBackupListHandler: httpLogger(handlers.getBackupListHandler(), "getBackupListHandler"),
+  downloadBackupHandler: httpLogger(handlers.downloadBackupHandler(), "backupDownloadHandler"),
 });
