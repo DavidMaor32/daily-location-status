@@ -10,11 +10,12 @@ import { Workbook } from "exceljs";
 import * as fs from "fs";
 import * as path from "path";
 import { BackupService } from "../../services/backup";
+import moment from "moment"; // Required for export filename formatting
 
 const BACKUP_DIR = "/app/backups";
 
 /**
- * BACKUP HANDLERS
+ * BACKUP HANDLERS (Manual, List, Download)
  */
 export const manualBackupHandler =
   (backupService: BackupService) => async (_req: Request, res: Response) => {
@@ -44,7 +45,7 @@ export const downloadBackupHandler =
   () => async (req: Request, res: Response) => {
     const fileName = req.params.file;
 
-    // SECURITY: Prevent directory traversal (e.g. ../../etc/passwd)
+    // SECURITY: Prevent path traversal
     if (!fileName || fileName.includes("/") || fileName.includes("..")) {
       return res.status(StatusCodes.BAD_REQUEST).json({ error: "Invalid filename" });
     }
@@ -82,16 +83,17 @@ export const addReportHandler =
     res.status(StatusCodes.CREATED).json(report);
   };
 
+// Merged from dev: Uses dal.createExcelExport and moment formatting
 export const exportReportsHandler =
   (dal: LocationReportDal) => async (req: Request, res: Response) => {
-    const params = searchQueryOptionsValidator(req.query);
-    const reports = await dal.getAllReports(params);
-    const workBook = new Workbook();
+    const params = Object.keys(req.query).length > 0 ? searchQueryOptionsValidator(req.query) : null;
+    const workBook = await dal.createExcelExport(params ?? {});
     
-    const dateString = 'DD-MM-YYYY';
+    const dateString = moment().format('DD-MM-YYYY');
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', 'attachment; filename=' + `${dateString}.xlsx`);
-    
+    res.setHeader('Content-Disposition', `attachment; filename=${dateString}.xlsx`);
+    res.status(StatusCodes.OK);
+
     await workBook.xlsx.write(res);
-    res.status(StatusCodes.OK).end();
+    res.end();
   };
