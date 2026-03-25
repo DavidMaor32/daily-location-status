@@ -25,15 +25,12 @@ export const createLocationReportRouter = (
   router.post("/", reportHandlers.addReportHandler);
 
   // =========================
-  // BACKUP ROUTES (optional)
+  // BACKUP ROUTES
   // =========================
   if (backupHandlers) {
     router.post("/backup", backupHandlers.manualBackupHandler);
     router.get("/backup/list", backupHandlers.getBackupListHandler);
-    router.get(
-      "/backup/download/:file",
-      backupHandlers.downloadBackupHandler
-    );
+    router.get("/backup/download/:file", backupHandlers.downloadBackupHandler);
   }
 
   return router;
