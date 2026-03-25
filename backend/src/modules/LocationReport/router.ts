@@ -11,7 +11,6 @@ export const createLocationReportRouter = (
   const router = Router();
 
   const reportHandlers = createDecoratedLocationReportHandlers(dal);
-
   const backupHandlers = backupService
     ? createDecoratedBackupHandlers(backupService)
     : null;
@@ -26,6 +25,7 @@ export const createLocationReportRouter = (
 
   // =========================
   // BACKUP ROUTES
+  // Only registered when BackupService is running (ENVIRONMENT=local)
   // =========================
   if (backupHandlers) {
     router.post("/backup", backupHandlers.manualBackupHandler);
