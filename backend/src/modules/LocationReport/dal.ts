@@ -5,6 +5,7 @@ import { SearchQueryOptions } from "./types";
 import moment from "moment";
 import { UserDal } from "../User/dal";
 import { LocationDal } from "../Location/dal";
+import { Workbook } from "exceljs";
 
 export class LocationReportDal {
   private model;
@@ -53,6 +54,62 @@ export class LocationReportDal {
       where,
     });
   };
+
+  createExcelExport = async (params: SearchQueryOptions): Promise<Workbook> => {
+    const reports = await this.getAllReports(params);
+
+    const workBook = new Workbook();
+    const sheet = workBook.addWorksheet('דיווח');
+
+    const rows = await Promise.all(reports.map(async row => {
+      const user = await this.userDal.getUserById(row.userId);
+      const location = await this.locationDal.getLocationById(row.locationId);
+      return [
+        user.fullName,
+        location.name,
+        row.occurredAt.toLocaleDateString('he-IL', { timeZone: 'Asia/Jerusalem' }),
+        row.occurredAt.toLocaleTimeString('he-IL', { timeZone: 'Asia/Jerusalem' }),
+        row.isStatusOk === true ? "תקין" : row.isStatusOk === false ? "לא תקין" : "לא הוזן",
+        // row.notes = there is no notes currently in this branch
+        row.source,
+      ];
+    }));
+
+    sheet.addTable({
+      name: 'ReportsTable',
+      ref: 'A1',
+      headerRow: true,
+      style: {
+        theme: 'TableStyleMedium2',
+        showRowStripes: true,
+        showColumnStripes: false,
+        showFirstColumn: true,
+        showLastColumn: true,
+      },
+      columns: [
+        { name: 'שם משתמש', filterButton: true },
+        { name: 'מיקום', filterButton: true },
+        { name: 'תאריך', filterButton: true },
+        { name: 'שעה', filterButton: true },
+        { name: 'סטטוס', filterButton: true },
+        // { name: 'הערות', filterButton: true }, = there is no notes currently in this branch
+        { name: 'מקור', filterButton: true },
+      ],
+      rows,
+    });
+
+    sheet.columns.forEach(column => {
+      let maxLength = 0;
+      column.values?.forEach(value => {
+        if (value && value!.toString().length > maxLength) {
+          maxLength = value!.toString().length;
+        }
+      });
+      column.width = maxLength + 5;
+    });
+
+    return workBook;
+  }
 
   getReportById = async (id: number): Promise<DBLocationReport> => {
     const report = await this.model.findUnique({ where: { id } });
