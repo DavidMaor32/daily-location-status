@@ -6,6 +6,7 @@ import {
 
 // Toolbar section for filters, location management, report exports, and summary.
 function AppToolbar({
+  emptyTable,
   actionLoading,
   canAddLocation,
   canChooseLocationToDelete,
@@ -108,7 +109,7 @@ function AppToolbar({
           <button
             className="btn btn-secondary"
             onClick={handleDownloadRangeFiles}
-            disabled={actionLoading}
+            disabled={actionLoading || emptyTable}
           >
             הורד אקסל
           </button>
