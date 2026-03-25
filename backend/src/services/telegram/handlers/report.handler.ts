@@ -62,6 +62,13 @@ export const reportHandler = async (bot: Telegraf<MyBotContext>, userDal: UserDa
             return ctx.reply("מה הסטטוס שלך?", statusKeyboard());
         }
 
+        if (ctx.session.step === "WAITING_FOR_STATUS") {
+            if (ctx.message.text !== "תקין" && ctx.message.text !== "לא תקין") {
+                await ctx.reply("נא לבחור סטטוס מבין שתי האפשרויות.")
+                return ctx.reply("מה הסטטוס שלך?", statusKeyboard());
+            }
+        }
+
         if (ctx.session.step === "WAITING_FOR_NOTES_TEXT") {
             ctx.session.notes = ctx.message.text;
             await locationReportDal.addReport({
