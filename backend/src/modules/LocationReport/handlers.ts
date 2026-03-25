@@ -1,32 +1,96 @@
 import { Request, Response } from "express";
-import { LocationReportDal } from "./dal";
 import { StatusCodes } from "http-status-codes";
-import { entityWithIdValidator } from "../../utils/validations";
-import {
-  plainLocationReportValidator,
-  searchQueryOptionsValidator,
-} from "./types";
-import { Workbook } from "exceljs";
+import { LocationReportDal } from "./dal";
+import { BackupService } from "../../services/backup";
 import * as fs from "fs";
 import * as path from "path";
-import { BackupService } from "../../services/backup";
 import moment from "moment";
 
 const BACKUP_DIR = "/app/backups";
 
 /**
- * BACKUP HANDLERS
+ * =========================
+ * REPORT HANDLERS
+ * =========================
  */
+
+export const getReportsHandler =
+  (dal: LocationReportDal) => async (req: Request, res: Response) => {
+    const { date, minDate, maxDate } = req.query;
+
+    const reports = await dal.getReports({
+      date: date as string,
+      minDate: minDate as string,
+      maxDate: maxDate as string,
+    });
+
+    res.status(StatusCodes.OK).json(reports);
+  };
+
+export const getReportByIdHandler =
+  (dal: LocationReportDal) => async (req: Request, res: Response) => {
+    const { id } = req.params;
+
+    const report = await dal.getReportById(Number(id));
+
+    if (!report) {
+      return res
+        .status(StatusCodes.NOT_FOUND)
+        .json({ message: "Report not found" });
+    }
+
+    res.status(StatusCodes.OK).json(report);
+  };
+
+export const addReportHandler =
+  (dal: LocationReportDal) => async (req: Request, res: Response) => {
+    const created = await dal.createReport(req.body);
+    res.status(StatusCodes.CREATED).json(created);
+  };
+
+export const exportReportsHandler =
+  (dal: LocationReportDal) => async (req: Request, res: Response) => {
+    const { date, minDate, maxDate } = req.query;
+
+    const workbook = await dal.createExcelExport({
+      date: date as string,
+      minDate: minDate as string,
+      maxDate: maxDate as string,
+    });
+
+    const dateString = moment().format("DD-MM-YYYY");
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename=reports_${dateString}.xlsx`
+    );
+
+    await workbook.xlsx.write(res);
+  };
+
+/**
+ * =========================
+ * BACKUP HANDLERS
+ * =========================
+ */
+
 export const manualBackupHandler =
-  (backupService: BackupService) => async (_req: Request, res: Response) => {
+  (backupService: BackupService) =>
+  async (_req: Request, res: Response) => {
     await backupService.runBackup();
+
     res.status(StatusCodes.OK).json({
       success: true,
       message: "Backup created",
     });
   };
 
-export const getBackupListHandler = 
+export const getBackupListHandler =
   () => async (_req: Request, res: Response) => {
     if (!fs.existsSync(BACKUP_DIR)) {
       return res.status(StatusCodes.OK).json([]);
@@ -34,64 +98,30 @@ export const getBackupListHandler =
 
     const files = fs
       .readdirSync(BACKUP_DIR)
-      .filter((f) => f.endsWith(".xlsx"))
-      .sort()
-      .reverse();
+      .filter((file) => file.endsWith(".xlsx"))
+      .sort((a, b) => b.localeCompare(a)); // newest first
 
     res.status(StatusCodes.OK).json(files);
   };
 
-export const downloadBackupHandler = 
+export const downloadBackupHandler =
   () => async (req: Request, res: Response) => {
-    const fileName = req.params.file;
+    const { file } = req.params;
 
-    if (!fileName || fileName.includes("/") || fileName.includes("..")) {
-      return res.status(StatusCodes.BAD_REQUEST).json({ error: "Invalid filename" });
+    if (!file) {
+      return res
+        .status(StatusCodes.BAD_REQUEST)
+        .json({ message: "File name is required" });
     }
 
-    const filePath = path.join(BACKUP_DIR, fileName);
+    const safeFileName = path.basename(file); // prevents path traversal
+    const filePath = path.join(BACKUP_DIR, safeFileName);
 
     if (!fs.existsSync(filePath)) {
-      return res.status(StatusCodes.NOT_FOUND).json({ error: "File not found" });
+      return res
+        .status(StatusCodes.NOT_FOUND)
+        .json({ message: "File not found" });
     }
 
     res.download(filePath);
-  };
-
-/**
- * REPORT HANDLERS
- */
-export const getReportsHandler =
-  (dal: LocationReportDal) => async (req: Request, res: Response) => {
-    const params = searchQueryOptionsValidator(req.query);
-    const reports = await dal.getAllReports(params);
-    res.status(StatusCodes.OK).json(reports);
-  };
-
-export const getReportByIdHandler =
-  (dal: LocationReportDal) => async (req: Request, res: Response) => {
-    const { id } = entityWithIdValidator(req.params);
-    const report = await dal.getReportById(id);
-    res.status(StatusCodes.OK).json(report);
-  };
-
-export const addReportHandler =
-  (dal: LocationReportDal) => async (req: Request, res: Response) => {
-    const data = plainLocationReportValidator(req.body);
-    const report = await dal.addReport(data);
-    res.status(StatusCodes.CREATED).json(report);
-  };
-
-export const exportReportsHandler =
-  (dal: LocationReportDal) => async (req: Request, res: Response) => {
-    const params = Object.keys(req.query).length > 0 ? searchQueryOptionsValidator(req.query) : null;
-    const workBook = await dal.createExcelExport(params ?? {});
-    
-    const dateString = moment().format('DD-MM-YYYY');
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename=${dateString}.xlsx`);
-    res.status(StatusCodes.OK);
-
-    await workBook.xlsx.write(res);
-    res.end();
   };
