@@ -99,7 +99,7 @@ function AppToolbar({
                 onChange={onDownloadToDateChange}
               />
               <button
-                className="btn btn-secondary"
+                className="btn btn-secondary toolbar-btn"
                 onClick={handleDownloadRangeFiles}
                 disabled={actionLoading}
               >
@@ -137,12 +137,13 @@ function AppToolbar({
                 }}
               />
               <button
-                className="btn btn-secondary"
+                className="btn btn-secondary toolbar-btn"
                 onClick={handleAddLocation}
                 disabled={!canAddLocation}
               >
                 הוסף מיקום
               </button>
+              
             </div>
           </div>
 
@@ -165,13 +166,16 @@ function AppToolbar({
                 )}
               </select>
               <button
-                className="btn btn-danger"
+                className="btn btn-danger toolbar-btn"
                 onClick={handleDeleteLocation}
                 disabled={!canDeleteLocation}
               >
                 מחק מיקום
               </button>
             </div>
+            <label className="file-upload-label">
+              הכנס קובץ אקסל כדי להוסיף כמה מיקומים בבת אחת
+            </label>
             <input
               type="file"
               accept=".xlsx,.xls"
@@ -201,7 +205,7 @@ function AppToolbar({
               />
             </div>
             <button
-              className="btn btn-secondary"
+              className="btn btn-secondary toolbar-btn"
               onClick={handleAddUser}
               disabled={!canAddUser}
             >

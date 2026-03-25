@@ -4,6 +4,7 @@ function UserEditModal({
   user,
   fullName,
   phone,
+  onDelete,
   onClose,
   onFullNameChange,
   onPhoneChange,
@@ -41,6 +42,14 @@ function UserEditModal({
           <div className="modal-actions">
             <button type="submit" className="btn btn-primary" disabled={loading}>
               שמור
+            </button>
+            <button
+              type="button"
+              className="btn btn-danger"
+              onClick={onDelete}
+              disabled={loading}
+            >
+              מחק משתמש
             </button>
             <button
               type="button"

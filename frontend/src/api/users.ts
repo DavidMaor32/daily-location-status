@@ -28,6 +28,11 @@ export const updateUser = (userId: number, payload: UpdateUserPayload) =>
     data: payload,
   });
 
+export const deleteUser = (userId: number) =>
+  apiRequest(`/users/${userId}`, {
+    method: "DELETE",
+  });
+
 export const createUser = (payload: CreateUserPayload) =>
   apiRequest<User>("/users", {
     method: "POST",

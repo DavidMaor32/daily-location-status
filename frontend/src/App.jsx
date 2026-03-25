@@ -16,6 +16,7 @@ import {
 import { getTodayString } from "./api/helpers.ts";
 import {
   createUser,
+  deleteUser,
   fetchUsers,
   importUsersFromExcel,
   updateUser,
@@ -469,6 +470,33 @@ function App() {
     }
   }
 
+  async function handleDeleteUser() {
+    const userId = Number(editingPerson?.person_id);
+    const fullName = String(editingPerson?.full_name || "");
+
+    if (!userId) {
+      return;
+    }
+
+    const approved = window.confirm(`למחוק את המשתמש "${fullName}"?`);
+    if (!approved) {
+      return;
+    }
+
+    setActionLoading(true);
+    setError("");
+
+    try {
+      await deleteUser(userId);
+      setEditingPerson(null);
+      await loadDashboard(selectedDate);
+    } catch (err) {
+      setError(getErrorMessage(err, "מחיקת משתמש נכשלה"));
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
   function normalizeHistoryReports(rawReports) {
     return rawReports
       .slice()
@@ -807,6 +835,7 @@ function App() {
         user={editingPerson}
         fullName={editUserFullName}
         phone={editUserPhone}
+        onDelete={handleDeleteUser}
         onClose={() => {
           if (actionLoading) {
             return;
