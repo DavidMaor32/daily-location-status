@@ -10,12 +10,12 @@ import { Workbook } from "exceljs";
 import * as fs from "fs";
 import * as path from "path";
 import { BackupService } from "../../services/backup";
-import moment from "moment"; // Required for export filename formatting
+import moment from "moment";
 
 const BACKUP_DIR = "/app/backups";
 
 /**
- * BACKUP HANDLERS (Manual, List, Download)
+ * BACKUP HANDLERS
  */
 export const manualBackupHandler =
   (backupService: BackupService) => async (_req: Request, res: Response) => {
@@ -45,7 +45,6 @@ export const downloadBackupHandler =
   () => async (req: Request, res: Response) => {
     const fileName = req.params.file;
 
-    // SECURITY: Prevent path traversal
     if (!fileName || fileName.includes("/") || fileName.includes("..")) {
       return res.status(StatusCodes.BAD_REQUEST).json({ error: "Invalid filename" });
     }
@@ -83,7 +82,6 @@ export const addReportHandler =
     res.status(StatusCodes.CREATED).json(report);
   };
 
-// Merged from dev: Uses dal.createExcelExport and moment formatting
 export const exportReportsHandler =
   (dal: LocationReportDal) => async (req: Request, res: Response) => {
     const params = Object.keys(req.query).length > 0 ? searchQueryOptionsValidator(req.query) : null;
