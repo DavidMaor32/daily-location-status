@@ -15,6 +15,8 @@ export const createLocationReportRouter = (
   router.get("/export", decoratedHandlers.exportReportsHandler);
   router.get("/:id", decoratedHandlers.getReportByIdHandler);
   router.post("/", decoratedHandlers.addReportHandler);
+  router.put("/:id", decoratedHandlers.updateReportHandler);
+  router.delete("/:id", decoratedHandlers.deleteReportHandler);
 
   // Only register backup endpoint when BackupService is running (local env only)
   if (backupService) {
@@ -54,5 +56,13 @@ export const createDecoratedLocationReportHandlers = (
   addReportHandler: httpLogger(
     handlers.addReportHandler(dal),
     "addReportHandler"
+  ),
+  updateReportHandler: httpLogger(
+    handlers.updateReportHandler(dal),
+    "updateReportHandler"
+  ),
+  deleteReportHandler: httpLogger(
+    handlers.deleteReportHandler(dal),
+    "deleteReportHandler"
   ),
 });

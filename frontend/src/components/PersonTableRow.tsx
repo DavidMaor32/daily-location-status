@@ -1,13 +1,9 @@
 import clsx from "clsx";
 import { getLocationChipClass } from "../constants/locations";
 import {
-  DAILY_STATUS_BAD,
-  DAILY_STATUS_MISSING,
-  DAILY_STATUS_OK,
   getDailyStatusChipClass,
 } from "../constants/statuses";
 import { formatTimestamp } from "../utils/dates";
-import type { QuickUpdatePatch } from "./PersonTable";
 
 // Compatibility row shape used while App.jsx adapts users + reports into the table.
 export type PersonRow = {
@@ -19,39 +15,18 @@ export type PersonRow = {
   last_updated?: string;
 };
 
-const getStatusQuickButtonClass = (
-  targetStatus: string,
-  currentStatus: string
-): string => {
-  let activeClass = "";
-  if (targetStatus === DAILY_STATUS_OK) {
-    activeClass = "active-status-ok";
-  } else if (targetStatus === DAILY_STATUS_BAD) {
-    activeClass = "active-status-bad";
-  } else if (targetStatus === DAILY_STATUS_MISSING) {
-    activeClass = "active-status-missing";
-  }
-
-  return clsx(
-    "btn",
-    "btn-chip",
-    "btn-status-choice",
-    targetStatus === currentStatus && activeClass
-  );
-};
-
 type PersonTableRowProps = {
   person: PersonRow;
-  locationOptions: string[];
   readOnly: boolean;
-  onQuickUpdate: (personId: string, patch: QuickUpdatePatch) => void;
+  onEdit: (person: PersonRow) => void;
+  onHistory: (person: PersonRow) => void;
 };
 
 const PersonTableRow = ({
   person,
-  locationOptions,
   readOnly,
-  onQuickUpdate,
+  onEdit,
+  onHistory,
 }: PersonTableRowProps) => {
   return (
     <tr>
@@ -60,57 +35,30 @@ const PersonTableRow = ({
         <span className={`status-chip ${getLocationChipClass(person.location)}`}>
           {person.location}
         </span>
-        {!readOnly ? (
-          <div className="quick-actions">
-            {locationOptions.map((location) => (
-              <button
-                key={location}
-                type="button"
-                className="btn btn-chip"
-                onClick={() => onQuickUpdate(person.person_id, { location })}
-              >
-                {location}
-              </button>
-            ))}
-          </div>
-        ) : null}
       </td>
       <td>
-        {!readOnly ? (
-          <div className="quick-actions">
-            <button
-              type="button"
-              className={getStatusQuickButtonClass(
-                DAILY_STATUS_OK,
-                person.daily_status
-              )}
-              onClick={() =>
-                onQuickUpdate(person.person_id, {
-                  daily_status: DAILY_STATUS_OK,
-                })
-              }
-            >
-              תקין
-            </button>
-            <button
-              type="button"
-              className={getStatusQuickButtonClass(
-                DAILY_STATUS_BAD,
-                person.daily_status
-              )}
-              onClick={() =>
-                onQuickUpdate(person.person_id, {
-                  daily_status: DAILY_STATUS_BAD,
-                })
-              }
-            >
-              לא תקין
-            </button>
-          </div>
-        ) : null}
+        <span className={clsx("status-chip", getDailyStatusChipClass(person.daily_status))}>
+          {person.daily_status}
+        </span>
       </td>
       <td>{person.phone || "-"}</td>
       <td>{formatTimestamp(person.last_updated)}</td>
+      <td>
+        <button
+          type="button"
+          className="btn btn-secondary btn-small"
+          onClick={() => onHistory(person)}
+        >
+          היסטוריה
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary btn-small"
+          onClick={() => onEdit(person)}
+        >
+          עריכה
+        </button>
+      </td>
     </tr>
   );
 };

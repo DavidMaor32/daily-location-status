@@ -1,3 +1,4 @@
+import { MIN_DATE } from "../App.jsx";
 import {
   DAILY_STATUS_BAD,
   DAILY_STATUS_MISSING,
@@ -8,6 +9,7 @@ import {
 function AppToolbar({
   actionLoading,
   canAddLocation,
+  canAddUser,
   canChooseLocationToDelete,
   canDeleteLocation,
   locationOptions,
@@ -16,16 +18,23 @@ function AppToolbar({
   downloadToDate,
   filteredPeopleCount,
   handleAddLocation,
+  handleAddUser,
   handleDeleteLocation,
   handleDownloadRangeFiles,
+  handleImportLocationsFile,
+  handleImportUsersFile,
   locationFilter,
   locationToDelete,
   newLocationName,
+  newUserFullName,
+  newUserPhone,
   onDownloadFromDateChange,
   onDownloadToDateChange,
   onLocationFilterChange,
   onLocationToDeleteChange,
   onNewLocationNameChange,
+  onNewUserFullNameChange,
+  onNewUserPhoneChange,
   onSearchTermChange,
   onStatusFilterChange,
   searchTerm,
@@ -33,93 +42,182 @@ function AppToolbar({
   todayString,
 }) {
   return (
-    <section className="toolbar-card">
-      <div className="filter-group compact-filter-group">
-        <label>חיפוש לפי שם</label>
-        <input
-          placeholder="הקלד שם..."
-          value={searchTerm}
-          onChange={onSearchTermChange}
-        />
-      </div>
-
-      <div className="filter-group compact-filter-group">
-        <label>פילטר מיקום</label>
-        <select value={locationFilter} onChange={onLocationFilterChange}>
-          <option value="all">הכול</option>
-          {locationOptions.map((location) => (
-            <option key={location} value={location}>
-              {location}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="filter-group compact-filter-group">
-        <label>פילטר סטטוס</label>
-        <select value={statusFilter} onChange={onStatusFilterChange}>
-          <option value="all">הכול</option>
-          <option value={DAILY_STATUS_OK}>תקין</option>
-          <option value={DAILY_STATUS_BAD}>לא תקין</option>
-          <option value={DAILY_STATUS_MISSING}>לא הוזן</option>
-        </select>
-      </div>
-
-      <div className="filter-group location-add-group">
-        <label>הוספת מיקום</label>
-        <div className="location-add-row">
-          <input
-            placeholder={'לדוגמה: "מיקום 6"'}
-            value={newLocationName}
-            onChange={onNewLocationNameChange}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                handleAddLocation();
-              }
-            }}
-          />
-          <button
-            className="btn btn-secondary"
-            onClick={handleAddLocation}
-            disabled={!canAddLocation}
-          >
-            הוסף מיקום
-          </button>
+    <>
+      <section className="toolbar-card">
+        <div className="toolbar-card-header">
+          <h2>פילטרים</h2>
+          <p className="muted-text">חיפוש, סינון וייצוא דוחות</p>
         </div>
-        
-      </div>
 
-      <div className="filter-group download-range-group">
-        <label>הורד דוחות לפי טווח</label>
-        <div className="download-range-row">
-          <input
-            type="date"
-            value={downloadFromDate}
-            max={todayString}
-            onChange={onDownloadFromDateChange}
-          />
-          <input
-            type="date"
-            value={downloadToDate}
-            max={todayString}
-            onChange={onDownloadToDateChange}
-          />
-          <button
-            className="btn btn-secondary"
-            onClick={handleDownloadRangeFiles}
-            disabled={actionLoading}
-          >
-            הורד אקסל
-          </button>
+        <div className="toolbar-card-body">
+          <div className="filter-group compact-filter-group">
+            <label>חיפוש לפי שם</label>
+            <input
+              placeholder="הקלד שם..."
+              value={searchTerm}
+              onChange={onSearchTermChange}
+            />
+          </div>
+
+          <div className="filter-group compact-filter-group">
+            <label>פילטר מיקום</label>
+            <select value={locationFilter} onChange={onLocationFilterChange}>
+              <option value="all">הכול</option>
+              {locationOptions.map((location) => (
+                <option key={location} value={location}>
+                  {location}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="filter-group compact-filter-group">
+            <label>פילטר סטטוס</label>
+            <select value={statusFilter} onChange={onStatusFilterChange}>
+              <option value="all">הכול</option>
+              <option value={DAILY_STATUS_OK}>תקין</option>
+              <option value={DAILY_STATUS_BAD}>לא תקין</option>
+              <option value={DAILY_STATUS_MISSING}>לא הוזן</option>
+            </select>
+          </div>
+
+          <div className="filter-group download-range-group">
+            <label>הורד דוחות לפי טווח</label>
+            <div className="download-range-row">
+              <input
+                type="date"
+                value={downloadFromDate}
+                max={todayString}
+                min={MIN_DATE}
+                onChange={onDownloadFromDateChange}
+              />
+              <input
+                type="date"
+                value={downloadToDate}
+                max={todayString}
+                min={MIN_DATE}
+                onChange={onDownloadToDateChange}
+              />
+              <button
+                className="btn btn-secondary"
+                onClick={handleDownloadRangeFiles}
+                disabled={actionLoading}
+              >
+                הורד אקסל
+              </button>
+            </div>
+          </div>
+
+          <div className="filter-group summary-box">
+            <label>סה"כ מוצגים</label>
+            <strong>{filteredPeopleCount}</strong>
+          </div>
         </div>
-      </div>
+      </section>
 
-      <div className="filter-group summary-box">
-        <label>סה"כ מוצגים</label>
-        <strong>{filteredPeopleCount}</strong>
-      </div>
-    </section>
+      <section className="toolbar-card">
+        <div className="toolbar-card-header">
+          <h2>ניהול</h2>
+          <p className="muted-text">הוספה, עריכה, ייבוא ומחיקה</p>
+        </div>
+
+        <div className="toolbar-card-body">
+          <div className="filter-group location-add-group">
+            <label>הוספת מיקום</label>
+            <div className="location-add-row">
+              <input
+                placeholder={'לדוגמה: "מיקום 6"'}
+                value={newLocationName}
+                onChange={onNewLocationNameChange}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    handleAddLocation();
+                  }
+                }}
+              />
+              <button
+                className="btn btn-secondary"
+                onClick={handleAddLocation}
+                disabled={!canAddLocation}
+              >
+                הוסף מיקום
+              </button>
+            </div>
+          </div>
+
+          <div className="filter-group location-manage-group">
+            <label>מחיקה וייבוא מיקומים</label>
+            <div className="location-remove-row">
+              <select
+                value={locationToDelete}
+                onChange={onLocationToDeleteChange}
+                disabled={!canChooseLocationToDelete}
+              >
+                {deletableLocationOptions.length === 0 ? (
+                  <option value="">אין מיקומים למחיקה</option>
+                ) : (
+                  deletableLocationOptions.map((location) => (
+                    <option key={location} value={location}>
+                      {location}
+                    </option>
+                  ))
+                )}
+              </select>
+              <button
+                className="btn btn-danger"
+                onClick={handleDeleteLocation}
+                disabled={!canDeleteLocation}
+              >
+                מחק מיקום
+              </button>
+            </div>
+            <input
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={handleImportLocationsFile}
+              disabled={actionLoading}
+            />
+          </div>
+
+          <div className="filter-group user-management-group">
+            <label>הוספת משתמש</label>
+            <div className="stacked-inputs">
+              <input
+                placeholder="שם מלא"
+                value={newUserFullName}
+                onChange={onNewUserFullNameChange}
+              />
+              <input
+                placeholder="טלפון"
+                value={newUserPhone}
+                onChange={onNewUserPhoneChange}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    handleAddUser();
+                  }
+                }}
+              />
+            </div>
+            <button
+              className="btn btn-secondary"
+              onClick={handleAddUser}
+              disabled={!canAddUser}
+            >
+              הוסף משתמש
+            </button>
+            <input
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={handleImportUsersFile}
+              disabled={actionLoading}
+            />
+          </div>
+
+        </div>
+      </section>
+    </>
   );
 }
 
