@@ -15,3 +15,5 @@ export const locationKeyboard = (locationNames: string[]) => {
 
 
 export const statusKeyboard = () => Markup.keyboard([["תקין", "לא תקין"]]).resize();
+
+export const addNotesDialogueKeyboard = () => Markup.keyboard([["כן", "לא"]]).resize();

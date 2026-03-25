@@ -11,6 +11,8 @@ type MyBotSession = {
   userId?: number;
   phone?: string;
   locationId?: number;
+  notes?: string | null;
+  isStatusOk?: boolean;
 };
 
 export type MyBotContext = Context & { session: MyBotSession };

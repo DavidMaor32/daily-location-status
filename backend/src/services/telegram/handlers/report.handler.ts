@@ -3,7 +3,7 @@ import { MyBotContext } from "../TelegramBot";
 import { UserDal } from "../../../modules/User/dal";
 import { LocationDal } from "../../../modules/Location/dal";
 import { LocationReportDal } from "../../../modules/LocationReport/dal";
-import { locationKeyboard, mainKeyboard, statusKeyboard } from "../keyboards";
+import { addNotesDialogueKeyboard, locationKeyboard, mainKeyboard, statusKeyboard } from "../keyboards";
 
 
 export const reportHandler = async (bot: Telegraf<MyBotContext>, userDal: UserDal, locationDal: LocationDal, locationReportDal: LocationReportDal) => {
@@ -17,32 +17,65 @@ export const reportHandler = async (bot: Telegraf<MyBotContext>, userDal: UserDa
     bot.hears(["תקין", "לא תקין"], async (ctx) => {
         if(ctx.session.step !== "WAITING_FOR_STATUS") return;
 
-        const isOk = ctx.message.text === "תקין";
+        ctx.session.isStatusOk = ctx.message.text === "תקין";
 
+        ctx.session.step = "WAITING_FOR_NOTES";
+        const location = await locationDal.getLocationById(ctx.session.locationId!);
+
+        return ctx.reply("יש לך הערות להוסיף?", addNotesDialogueKeyboard());
+    });
+
+    bot.hears(["כן", "לא"], async (ctx) => {
+        if (ctx.session.step !== "WAITING_FOR_NOTES") return;
+
+        if (ctx.message.text === "כן") {
+            ctx.session.step = "WAITING_FOR_NOTES_TEXT";
+            return ctx.reply("הזן את ההערה שלך:", {reply_markup: {remove_keyboard: true}});
+        }
+
+        ctx.session.notes = undefined;
         await locationReportDal.addReport({
             userId: ctx.session.userId!,
             locationId: ctx.session.locationId!,
             occurredAt: new Date(),
-            isStatusOk: isOk,
+            isStatusOk: ctx.session.isStatusOk!,
+            notes: null,
             source: "bot",
-        })
+        });
 
         ctx.session.step = undefined;
         const location = await locationDal.getLocationById(ctx.session.locationId!);
-        ctx.reply(`ההזנה נקלטה בהצלחה!\nשם: ${ctx.session.fullName}.\nמיקום: ${location?.name}.\nסטטוס: ${isOk ? "תקין" : "לא תקין"}.`);
-
+        ctx.reply(`ההזנה נקלטה בהצלחה!\nשם: ${ctx.session.fullName}.\nמיקום: ${location?.name}.\nסטטוס: ${ctx.session.isStatusOk ? "תקין" : "לא תקין"}.\nהערות: ללא.`);
         return ctx.reply("רוצה לעדכן שוב?", mainKeyboard());
     });
 
+
     bot.on("text", async (ctx) => {
-        if (ctx.session.step !== "WAITING_FOR_LOCATION") return;
-        const locations = await locationDal.getAllLocations();
-        const location = locations.find((l) => l.name === ctx.message.text);
-        if (!location) {
+        if (ctx.session.step === "WAITING_FOR_LOCATION") {
+            const locations = await locationDal.getAllLocations();
+            const location = locations.find((l) => l.name === ctx.message.text);
+            if (!location) {
             return ctx.reply("נא לבחור מיקום מהרשימה.");
+            }
+            ctx.session.locationId = location.id;
+            ctx.session.step = "WAITING_FOR_STATUS";
+            return ctx.reply("מה הסטטוס שלך?", statusKeyboard());
         }
-        ctx.session.locationId = location.id;
-        ctx.session.step = "WAITING_FOR_STATUS";
-        return ctx.reply("מה הסטטוס שלך?", statusKeyboard());
-    });
+
+        if (ctx.session.step === "WAITING_FOR_NOTES_TEXT") {
+            ctx.session.notes = ctx.message.text;
+            await locationReportDal.addReport({
+            userId: ctx.session.userId!,
+            locationId: ctx.session.locationId!,
+            occurredAt: new Date(),
+            isStatusOk: ctx.session.isStatusOk!,
+            notes: ctx.session.notes,
+            source: "bot",
+        });
+        ctx.session.step = undefined;
+        const location = await locationDal.getLocationById(ctx.session.locationId!);
+        ctx.reply(`ההזנה נקלטה בהצלחה!\nשם: ${ctx.session.fullName}.\nמיקום: ${location?.name}.\nסטטוס: ${ctx.session.isStatusOk ? "תקין" : "לא תקין"}.\nהערות: ${ctx.session.notes}.`);
+        return ctx.reply("רוצה לעדכן שוב?", mainKeyboard());
+    }
+});
 }
