@@ -12,6 +12,7 @@ export const createLocationReportRouter = (
   const decoratedHandlers = createDecoratedLocationReportHandlers(dal);
 
   router.get("/", decoratedHandlers.getReportsHandler);
+  router.get("/export", decoratedHandlers.exportReportsHandler);
   router.get("/:id", decoratedHandlers.getReportByIdHandler);
   router.post("/", decoratedHandlers.addReportHandler);
 
@@ -45,6 +46,10 @@ export const createDecoratedLocationReportHandlers = (
   getReportByIdHandler: httpLogger(
     handlers.getReportByIdHandler(dal),
     "getReportByIdHandler"
+  ),
+  exportReportsHandler: httpLogger(
+    handlers.exportReportsHandler(dal),
+    "exportReportsHandler"
   ),
   addReportHandler: httpLogger(
     handlers.addReportHandler(dal),
