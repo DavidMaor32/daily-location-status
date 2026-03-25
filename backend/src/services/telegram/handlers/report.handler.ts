@@ -20,7 +20,6 @@ export const reportHandler = async (bot: Telegraf<MyBotContext>, userDal: UserDa
         ctx.session.isStatusOk = ctx.message.text === "תקין";
 
         ctx.session.step = "WAITING_FOR_NOTES";
-        const location = await locationDal.getLocationById(ctx.session.locationId!);
 
         return ctx.reply("יש לך הערות להוסיף?", addNotesDialogueKeyboard());
     });
