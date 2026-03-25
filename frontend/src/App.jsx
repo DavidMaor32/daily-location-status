@@ -174,7 +174,8 @@ function App() {
   }
 
   async function handleDownloadRangeFiles() {
-    const url = `/api/reports/export?from=${downloadFromDate}&to=${downloadToDate}`;
+    const url = `/api/reports/export?minDate=${downloadFromDate}T00:00:00.000Z&maxDate=${downloadToDate}T23:59:59.999Z`;
+
     triggerFileDownload(url, `report_${downloadFromDate}_to_${downloadToDate}.xlsx`);
   }
 
