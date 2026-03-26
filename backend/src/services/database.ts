@@ -7,7 +7,10 @@ export const DatabaseConfigSchema = z.object({
 });
 export type DatabaseConfig = z.infer<typeof DatabaseConfigSchema>;
 
+export const normalizeDatabaseUrl = (databaseUrl: string) =>
+  databaseUrl.replace(/^mysql:\/\//, "mariadb://");
+
 export const createDBClient = (config: DatabaseConfig) => 
     new PrismaClient({adapter:
-        new PrismaMariaDb(config.DATABASE_URL)
+        new PrismaMariaDb(normalizeDatabaseUrl(config.DATABASE_URL))
     });
