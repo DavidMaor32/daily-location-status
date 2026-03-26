@@ -58,6 +58,22 @@ services:
     networks:
       - daily_network
 
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: daily-status-gateway
+    restart: always
+    ports:
+      - "8070:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_started
+    networks:
+      - daily_network
+
 networks:
   daily_network:
     driver: bridge
