@@ -754,7 +754,7 @@ function App() {
               className="btn btn-primary"
               data-testid="load-date-button"
               onClick={() => handleLoadSelectedDate(selectedDate)}
-              disabled={!canLoadSelectedDate}
+              disabled={!canDownloadSelectedDate}
             >
               טען תאריך
             </button>

@@ -115,29 +115,10 @@ function AppToolbar({
           </div>
         </div>
       </section>
-
-      <div className="filter-group download-range-group">
-        <label>הורד דוחות לפי טווח</label>
-        <div className="download-range-row">
-          <input
-            type="date"
-            value={downloadFromDate}
-            max={todayString}
-            onChange={onDownloadFromDateChange}
-          />
-          <input
-            type="date"
-            value={downloadToDate}
-            max={todayString}
-            onChange={onDownloadToDateChange}
-          />
-          <button
-            className="btn btn-secondary"
-            onClick={handleDownloadRangeFiles}
-            disabled={actionLoading || emptyTable}
-          >
-            הורד אקסל
-          </button>
+      <section className="toolbar-card">
+        <div className="toolbar-card-header">
+          <h2>ניהול</h2>
+          <p className="muted-text">הוספה, עריכה, ייבוא ומחיקה</p>
         </div>
 
         <div className="toolbar-card-body">
@@ -156,13 +137,12 @@ function AppToolbar({
                 }}
               />
               <button
-                className="btn btn-secondary toolbar-btn"
+                className="btn btn-secondary"
                 onClick={handleAddLocation}
                 disabled={!canAddLocation}
               >
                 הוסף מיקום
               </button>
-              
             </div>
           </div>
 
@@ -185,16 +165,13 @@ function AppToolbar({
                 )}
               </select>
               <button
-                className="btn btn-danger toolbar-btn"
+                className="btn btn-danger"
                 onClick={handleDeleteLocation}
                 disabled={!canDeleteLocation}
               >
                 מחק מיקום
               </button>
             </div>
-            <label className="file-upload-label">
-              הכנס קובץ אקסל כדי להוסיף כמה מיקומים בבת אחת
-            </label>
             <input
               type="file"
               accept=".xlsx,.xls"
@@ -224,7 +201,7 @@ function AppToolbar({
               />
             </div>
             <button
-              className="btn btn-secondary toolbar-btn"
+              className="btn btn-secondary"
               onClick={handleAddUser}
               disabled={!canAddUser}
             >
