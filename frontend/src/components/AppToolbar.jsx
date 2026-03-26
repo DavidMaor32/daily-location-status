@@ -7,6 +7,7 @@ import {
 
 // Toolbar section for filters, location management, report exports, and summary.
 function AppToolbar({
+  emptyTable,
   actionLoading,
   canAddLocation,
   canAddUser,
@@ -115,10 +116,28 @@ function AppToolbar({
         </div>
       </section>
 
-      <section className="toolbar-card">
-        <div className="toolbar-card-header">
-          <h2>ניהול</h2>
-          <p className="muted-text">הוספה, עריכה, ייבוא ומחיקה</p>
+      <div className="filter-group download-range-group">
+        <label>הורד דוחות לפי טווח</label>
+        <div className="download-range-row">
+          <input
+            type="date"
+            value={downloadFromDate}
+            max={todayString}
+            onChange={onDownloadFromDateChange}
+          />
+          <input
+            type="date"
+            value={downloadToDate}
+            max={todayString}
+            onChange={onDownloadToDateChange}
+          />
+          <button
+            className="btn btn-secondary"
+            onClick={handleDownloadRangeFiles}
+            disabled={actionLoading || emptyTable}
+          >
+            הורד אקסל
+          </button>
         </div>
 
         <div className="toolbar-card-body">

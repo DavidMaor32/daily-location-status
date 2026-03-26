@@ -70,7 +70,7 @@ export class LocationReportDal {
         row.occurredAt.toLocaleDateString('he-IL', { timeZone: 'Asia/Jerusalem' }),
         row.occurredAt.toLocaleTimeString('he-IL', { timeZone: 'Asia/Jerusalem' }),
         row.isStatusOk === true ? "תקין" : row.isStatusOk === false ? "לא תקין" : "לא הוזן",
-        // row.notes = there is no notes currently in this branch
+        row.notes,
         row.source,
       ];
     }));
@@ -92,7 +92,7 @@ export class LocationReportDal {
         { name: 'תאריך', filterButton: true },
         { name: 'שעה', filterButton: true },
         { name: 'סטטוס', filterButton: true },
-        // { name: 'הערות', filterButton: true }, = there is no notes currently in this branch
+        { name: 'הערות', filterButton: true },
         { name: 'מקור', filterButton: true },
       ],
       rows,

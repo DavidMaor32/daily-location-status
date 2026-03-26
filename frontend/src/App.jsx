@@ -315,8 +315,15 @@ function App() {
     setError("");
 
     try {
+      const user = searchTerm ? people.find(person => person.full_name === searchTerm) : undefined;
+      const locationId = locationIdByName.get(locationFilter);
+      
       const { url, filename } = exportReports(
-        { date: selectedDate },
+        { 
+          date: selectedDate,
+          locationId: locationId ? Number(locationId) : undefined,
+          userId: user ? Number(user.person_id) : undefined,
+        },
         `reports_${selectedDate}.xlsx`
       );
       triggerFileDownload(url, filename);
@@ -342,10 +349,15 @@ function App() {
     setError("");
 
     try {
+      const user = searchTerm ? people.find(person => person.full_name === searchTerm) : undefined;
+      const locationId = locationIdByName.get(locationFilter);
+      
       const { url, filename } = exportReports(
         {
           minDate: `${downloadFromDate}T00:00:00.000Z`,
           maxDate: `${downloadToDate}T23:59:59.999Z`,
+          locationId: locationId ? Number(locationId) : undefined,
+          userId: user ? Number(user.person_id) : undefined,
         },
         `reports_${downloadFromDate}_to_${downloadToDate}.xlsx`
       );
@@ -728,10 +740,37 @@ function App() {
 
         <div className="header-actions">
           
+          <div className="date-controls">
+            <label htmlFor="snapshot-date">בחירת תאריך</label>
+            <input
+              id="snapshot-date"
+              data-testid="snapshot-date-input"
+              type="date"
+              value={selectedDate}
+              onChange={(event) => setSelectedDate(event.target.value)}
+              max={todayString}
+            />
+            <button
+              className="btn btn-primary"
+              data-testid="load-date-button"
+              onClick={() => handleLoadSelectedDate(selectedDate)}
+              disabled={!canLoadSelectedDate}
+            >
+              טען תאריך
+            </button>
+            <button
+              className="btn btn-primary"
+              onClick={handleDownloadDayFile}
+              disabled={!canDownloadSelectedDate || filteredPeople.length === 0}
+            >
+              הורד אקסל ליום
+            </button>
+          </div>
         </div>
       </header>
 
       <AppToolbar
+        emptyTable={filteredPeople.length === 0}
         actionLoading={actionLoading}
         canAddLocation={canAddLocation}
         canAddUser={canAddUser}

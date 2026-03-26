@@ -35,7 +35,8 @@ model LocationReport {
   createdAt     DateTime    @default(now()) @map("created_at")
   isStatusOk    Boolean?    @map("is_status_ok")
   source        Source
-
+  notes         String?
+  
   user   User   @relation(fields: [userId], references: [id])
   location Location @relation(fields: [locationId], references: [id])
 }
