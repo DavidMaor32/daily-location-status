@@ -15,8 +15,8 @@ export const exportReportsHandler =
     const workBook = await dal.createExcelExport(params ?? {});
 
     const minDate = moment(params?.minDate).format('DD-MM-YYYY');
-    const maxDate = moment(params?.minDate).format('DD-MM-YYYY');
-    
+    const maxDate = moment(params?.maxDate).format('DD-MM-YYYY');
+
     const date = moment(params?.date).format('DD-MM-YYYY');
     
     const dateString = params?.date ? date : `${minDate + " - " + maxDate}`;

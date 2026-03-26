@@ -10,6 +10,7 @@ import {
   createReport,
   deleteReport,
   exportReports,
+  exportReportsDownloadInfo,
   fetchReports,
   updateReport,
 } from "./api/reports.ts";
@@ -318,14 +319,22 @@ function App() {
       const user = searchTerm ? people.find(person => person.full_name === searchTerm) : undefined;
       const locationId = locationIdByName.get(locationFilter);
       
-      const { url, filename } = exportReports(
-        { 
-          date: selectedDate,
-          locationId: locationId ? Number(locationId) : undefined,
-          userId: user ? Number(user.person_id) : undefined,
-        },
-        `reports_${selectedDate}.xlsx`
-      );
+
+      const filters = {
+        date: selectedDate,
+        locationId: locationId ? Number(locationId) : undefined,
+        userId: user ? Number(user.person_id) : undefined,
+      };
+
+      const response = await exportReports(filters);
+      
+      if (Object.keys(response).length === 0) {        
+        setError("אין דוחות להצגה  בתאריכים שנבחרו");
+        return;
+      }
+
+      const { url, filename } = exportReportsDownloadInfo(filters, `reports_${selectedDate}.xlsx`);   
+
       triggerFileDownload(url, filename);
     } catch (err) {
       setError(getErrorMessage(err, "הורדת דוח היום נכשלה"));
@@ -352,15 +361,21 @@ function App() {
       const user = searchTerm ? people.find(person => person.full_name === searchTerm) : undefined;
       const locationId = locationIdByName.get(locationFilter);
       
-      const { url, filename } = exportReports(
-        {
-          minDate: `${downloadFromDate}T00:00:00.000Z`,
-          maxDate: `${downloadToDate}T23:59:59.999Z`,
-          locationId: locationId ? Number(locationId) : undefined,
-          userId: user ? Number(user.person_id) : undefined,
-        },
-        `reports_${downloadFromDate}_to_${downloadToDate}.xlsx`
-      );
+      const filters = {
+        minDate: downloadFromDate,
+        maxDate: downloadToDate,
+        locationId: locationId ? Number(locationId) : undefined,
+        userId: user ? Number(user.person_id) : undefined,
+      };
+
+      const response = await exportReports(filters);
+      
+      if (Object.keys(response).length === 0) {        
+        setError("אין דוחות להצגה  בתאריכים שנבחרו");
+        return;
+      }
+
+      const { url, filename } = exportReportsDownloadInfo(filters, `reports_${downloadFromDate}_to_${downloadToDate}.xlsx`);
       triggerFileDownload(url, filename);
     } catch (err) {
       setError(getErrorMessage(err, "הורדת דוחות הטווח נכשלה"));
