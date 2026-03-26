@@ -107,6 +107,22 @@ const buildAvailableDates = (reports, todayString, selectedDate) => {
     .sort((left, right) => right.localeCompare(left));
 };
 
+const formatBackupLastUpdated = (value) => {
+  if (!value) {
+    return "";
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat("he-IL", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(parsed);
+};
+
 function App() {
   const todayString = getTodayString();
 
@@ -115,10 +131,13 @@ function App() {
   const [reports, setReports] = useState([]);
   const [locations, setLocations] = useState([]);
   const [backupFiles, setBackupFiles] = useState([]);
+  const [selectedBackupDate, setSelectedBackupDate] = useState(todayString);
   const [selectedDate, setSelectedDate] = useState(todayString);
   const [availableDates, setAvailableDates] = useState([todayString]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [backupRendering, setBackupRendering] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
 
   // Filter & Form States
@@ -215,18 +234,34 @@ function App() {
     deletableLocationOptions.length > 0 && !actionLoading;
   const canDeleteLocation =
     !actionLoading && deletableLocationOptions.length > 0 && Boolean(locationToDelete);
+  const selectedBackup = useMemo(
+    () => backupFiles.find((backup) => backup?.date === selectedBackupDate) || null,
+    [backupFiles, selectedBackupDate]
+  );
 
   // Effects: Initial Data Load
   useEffect(() => {
-    void loadDashboard(todayString);
-    void loadBackupFiles();
+    void refreshData(todayString);
   }, []);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      void refreshData(selectedDate, { silent: true });
+    }, 30000);
+
+    return () => window.clearInterval(intervalId);
+  }, [selectedDate, historyPerson, locationNameById, todayString]);
 
   // --- API Actions ---
 
-  async function loadDashboard(dateValue) {
-    setLoading(true);
-    setError("");
+  async function loadDashboard(dateValue, options = {}) {
+    const { silent = false } = options;
+
+    if (!silent) {
+      setLoading(true);
+      setError("");
+    }
+
     try {
       const [u, l, allR, dateR] = await Promise.all([
         fetchUsers(),
@@ -243,9 +278,13 @@ function App() {
       setAvailableDates(Array.from(new Set([todayString, dateValue, ...historyDates]))
         .filter(Boolean).sort((a, b) => b.localeCompare(a)));
     } catch (err) {
-      setError(getErrorMessage(err, "טעינת הנתונים נכשלה"));
+      if (!silent) {
+        setError(getErrorMessage(err, "טעינת הנתונים נכשלה"));
+      }
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }
 
@@ -254,17 +293,44 @@ function App() {
       const res = await fetch("/api/reports/backup/list");
       if (res.ok) {
         const data = await res.json();
-        setBackupFiles(Array.isArray(data) ? data : []);
+        const nextBackups = Array.isArray(data) ? data : [];
+        setBackupFiles(nextBackups);
+
+        if (nextBackups.some((backup) => backup?.date === todayString)) {
+          setSelectedBackupDate(todayString);
+        } else if (nextBackups[0]?.date) {
+          setSelectedBackupDate(nextBackups[0].date);
+        }
       }
     } catch (err) {
       // Silently ignore — backup service may not be running
     }
   }
 
+  async function refreshData(dateValue = selectedDate, options = {}) {
+    const { silent = false } = options;
+
+    if (!silent) {
+      setRefreshing(true);
+    }
+
+    try {
+      await Promise.all([
+        loadDashboard(dateValue, { silent }),
+        loadBackupFiles(),
+        historyPerson ? loadHistoryReports(historyPerson) : Promise.resolve(),
+      ]);
+    } finally {
+      if (!silent) {
+        setRefreshing(false);
+      }
+    }
+  }
+
   // FIX: Added missing handleLoadSelectedDate
   async function handleLoadSelectedDate(dateValue) {
     if (!dateValue) return;
-    await loadDashboard(dateValue);
+    await refreshData(dateValue);
   }
 
   // FIX: Added missing handleDownloadDayFile
@@ -293,9 +359,30 @@ function App() {
     link.remove();
   }
 
-  async function handleBackupDownload(file) {
-    const url = `/api/reports/backup/download/${encodeURIComponent(file)}`;
-    triggerFileDownload(url, file);
+  async function handleBackupDownload(fileName) {
+    const url = `/api/reports/backup/download/${encodeURIComponent(fileName)}?t=${Date.now()}`;
+    triggerFileDownload(url, fileName);
+  }
+
+  async function handleRenderBackupNow() {
+    setBackupRendering(true);
+    setError("");
+
+    try {
+      const res = await fetch("/api/reports/backup", {
+        method: "POST",
+      });
+
+      if (!res.ok) {
+        throw new Error("Backup render failed");
+      }
+
+      await loadBackupFiles();
+    } catch (err) {
+      setError(getErrorMessage(err, "יצירת קובץ הגיבוי נכשלה"));
+    } finally {
+      setBackupRendering(false);
+    }
   }
 
   async function handleDownloadRangeFiles() {
@@ -688,19 +775,56 @@ function App() {
       {/* BACKUP SECTION — only shown when ENVIRONMENT=local and backups exist */}
       {backupFiles.length > 0 && (
         <section className="toolbar-card backup-section">
-          <h3>📂 גיבויים זמינים להורדה</h3>
-          <div className="backup-list" style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginTop: "10px" }}>
-            {backupFiles.map((file) => (
-              <div key={file} className="backup-item" style={{ border: "1px solid #ddd", padding: "8px", borderRadius: "4px", background: "#f9f9f9" }}>
-                <span style={{ marginLeft: "10px" }}>{file}</span>
-                <button
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => handleBackupDownload(file)}
-                >
-                  📥 הורד
-                </button>
-              </div>
-            ))}
+          <div className="toolbar-card-header">
+            <h2>גיבויים זמינים</h2>
+            <p className="muted-text">נוצר אוטומטית כל שעה, או בלחיצה ידנית</p>
+          </div>
+
+          <div className="backup-controls">
+            <div className="filter-group backup-date-group">
+              <label htmlFor="backup-date">תאריך גיבוי</label>
+              <input
+                id="backup-date"
+                type="date"
+                value={selectedBackupDate}
+                min={MIN_DATE}
+                max={todayString}
+                onChange={(event) => setSelectedBackupDate(event.target.value)}
+              />
+            </div>
+
+            <div className="backup-status-card">
+              {selectedBackup ? (
+                <>
+                  <strong>{selectedBackup.fileName}</strong>
+                  <span className="muted-text">
+                    {selectedBackup.isToday && selectedBackup.lastUpdatedAt
+                      ? `עודכן לאחרונה: ${formatBackupLastUpdated(selectedBackup.lastUpdatedAt)}`
+                      : `קיים גיבוי לתאריך ${selectedBackup.date}`}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <strong>אין גיבוי לתאריך שנבחר</strong>
+                  <span className="muted-text">בחר תאריך אחר כדי להוריד קובץ קיים.</span>
+                </>
+              )}
+            </div>
+
+            <button
+              className="btn btn-primary"
+              onClick={() => selectedBackup && handleBackupDownload(selectedBackup.fileName)}
+              disabled={!selectedBackup}
+            >
+              הורד גיבוי
+            </button>
+            <button
+              className="btn btn-primary"
+              onClick={() => void handleRenderBackupNow()}
+              disabled={backupRendering}
+            >
+              {backupRendering ? "יוצר..." : "עדכן עכשיו"}
+            </button>
           </div>
         </section>
       )}

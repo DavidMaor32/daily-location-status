@@ -7,6 +7,7 @@ import * as path from "path";
 
 import { LocationReportDal } from "./dal";
 import { BackupService } from "../../services/backup";
+import { getBackupDir } from "../../services/backupPath";
 
 import { entityWithIdValidator } from "../../utils/validations";
 
@@ -15,9 +16,16 @@ import {
   plainLocationReportValidator,
   searchQueryOptionsValidator,
 } from "./types";
-import { entityWithIdValidator } from "../../utils/validations";
 
-const BACKUP_DIR = "/app/backups";
+const BACKUP_DIR = getBackupDir();
+const BACKUP_FILE_PATTERN = /^(\d{2})-(\d{2})-(\d{4})\.xlsx$/;
+
+type BackupListItem = {
+  fileName: string;
+  date: string;
+  isToday: boolean;
+  lastUpdatedAt: string;
+};
 
 /**
  * BACKUP HANDLERS
@@ -34,14 +42,34 @@ export const manualBackupHandler =
 export const getBackupListHandler = 
   () => async (_req: Request, res: Response) => {
     if (!fs.existsSync(BACKUP_DIR)) {
-      return res.status(StatusCodes.OK).json([]);
+      res.status(StatusCodes.OK).json([]);
+      return;
     }
 
     const files = fs
       .readdirSync(BACKUP_DIR)
       .filter((f) => f.endsWith(".xlsx"))
-      .sort()
-      .reverse();
+      .map<BackupListItem | null>((fileName) => {
+        const match = fileName.match(BACKUP_FILE_PATTERN);
+
+        if (!match) {
+          return null;
+        }
+
+        const [, day, month, year] = match;
+        const filePath = path.join(BACKUP_DIR, fileName);
+        const stats = fs.statSync(filePath);
+        const date = `${year}-${month}-${day}`;
+
+        return {
+          fileName,
+          date,
+          isToday: date === moment().format("YYYY-MM-DD"),
+          lastUpdatedAt: stats.mtime.toISOString(),
+        };
+      })
+      .filter((file): file is BackupListItem => file !== null)
+      .sort((left, right) => right.date.localeCompare(left.date));
 
     res.status(StatusCodes.OK).json(files);
   };
@@ -51,16 +79,20 @@ export const downloadBackupHandler =
     const fileName = req.params.file;
 
     if (!fileName || fileName.includes("/") || fileName.includes("..")) {
-      return res.status(StatusCodes.BAD_REQUEST).json({ error: "Invalid filename" });
+      res.status(StatusCodes.BAD_REQUEST).json({ error: "Invalid filename" });
+      return;
     }
 
-    const filePath = path.join(BACKUP_DIR, fileName);
-import moment from "moment";
+    const filePath = path.join(BACKUP_DIR, fileName.toString());
 
     if (!fs.existsSync(filePath)) {
-      return res.status(StatusCodes.NOT_FOUND).json({ error: "File not found" });
+      res.status(StatusCodes.NOT_FOUND).json({ error: "File not found" });
+      return;
     }
 
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
     res.download(filePath);
   };
 
