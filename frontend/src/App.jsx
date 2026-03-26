@@ -175,10 +175,11 @@ function App() {
 
   const people = useMemo(() => {
     return users.map((user) => {
-      // FIX: spread to avoid mutating original array before sort
-      const userReports = [...reports.filter((r) => Number(r?.userId) === Number(user.id))];
-      const latest = userReports.sort((a, b) =>
-        new Date(b?.occurredAt || 0) - new Date(a?.occurredAt || 0)
+      // MODERN APPROACH: Filter then toSorted() to find the latest report
+      const latest = reports
+      .filter((r) => Number(r?.userId) === Number(user.id))
+      .toSorted((a, b) => 
+        new Date(b?.occurredAt || 0).getTime() - new Date(a?.occurredAt || 0).getTime()
       )[0];
 
       return {
