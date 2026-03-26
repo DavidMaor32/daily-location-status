@@ -14,6 +14,8 @@ export const PlainLocationReportSchema = z.object({
   source: ReportSourceSchema,
 });
 
+export const PartialLocationReportSchema = PlainLocationReportSchema.partial();
+
 export const DBLocationReportSchema = PlainLocationReportSchema.extend({
     id: z.number(),
     createdAt: z.coerce.date(),

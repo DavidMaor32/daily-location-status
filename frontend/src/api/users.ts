@@ -1,4 +1,4 @@
-import { apiRequest } from "./base";
+import { apiRequest, uploadFile } from "./base";
 
 export type User = {
   id: number;
@@ -12,6 +12,11 @@ export type UpdateUserPayload = {
   phone?: string;
 };
 
+export type CreateUserPayload = {
+  fullName: string;
+  phone: string;
+};
+
 export const fetchUsers = () => apiRequest<User[]>("/users");
 
 export const fetchUserById = (userId: number) =>
@@ -19,6 +24,20 @@ export const fetchUserById = (userId: number) =>
 
 export const updateUser = (userId: number, payload: UpdateUserPayload) =>
   apiRequest(`/users/${userId}`, {
-    method: "PATCH",
+    method: "PUT",
     data: payload,
   });
+
+export const deleteUser = (userId: number) =>
+  apiRequest(`/users/${userId}`, {
+    method: "DELETE",
+  });
+
+export const createUser = (payload: CreateUserPayload) =>
+  apiRequest<User>("/users", {
+    method: "POST",
+    data: payload,
+  });
+
+export const importUsersFromExcel = (file: File) =>
+  uploadFile("/users/excel", file);

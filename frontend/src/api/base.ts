@@ -55,3 +55,27 @@ export const apiRequest = async <T = JsonValue>(
     throw new Error(getApiErrorMessage(error));
   }
 };
+
+export const uploadFile = async <T = JsonValue>(
+  path: string,
+  file: File,
+  fieldName = "file"
+): Promise<T> => {
+  const formData = new FormData();
+  formData.append(fieldName, file);
+
+  try {
+    const response = await apiClient.request<T>({
+      url: path,
+      method: "POST",
+      data: formData,
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    });
+
+    return (response.data ?? {}) as T;
+  } catch (error) {
+    throw new Error(getApiErrorMessage(error));
+  }
+};

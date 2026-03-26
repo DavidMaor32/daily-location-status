@@ -1,15 +1,30 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { createLocation, deleteLocation, fetchLocations } from "./api/locations.ts";
+import {
+  createLocation,
+  deleteLocation,
+  fetchLocations,
+  importLocationsFromExcel,
+} from "./api/locations.ts";
 import {
   createReport,
+  deleteReport,
   exportReports,
   fetchReports,
+  updateReport,
 } from "./api/reports.ts";
 import { getTodayString } from "./api/helpers.ts";
-import { fetchUsers } from "./api/users.ts";
+import {
+  createUser,
+  deleteUser,
+  fetchUsers,
+  importUsersFromExcel,
+  updateUser,
+} from "./api/users.ts";
 import AppToolbar from "./components/AppToolbar";
 import PersonTable from "./components/PersonTable";
+import UserEditModal from "./components/UserEditModal";
+import UserHistoryModal from "./components/UserHistoryModal";
 import {
   DEFAULT_LOCATION_OPTIONS,
   uniqueLocations,
@@ -19,9 +34,11 @@ import {
   DAILY_STATUS_MISSING,
   DAILY_STATUS_OK,
 } from "./constants/statuses.ts";
+import { toUtcIsoFromLocalInput } from "./utils/dates.ts";
 import { getErrorMessage } from "./utils/errors.ts";
 
 const REPORTS_UNAVAILABLE_MESSAGE = "לא קיימים דוחות לתאריך שנבחר.";
+export const MIN_DATE = "2026-03-20";
 
 const normalizeLocationName = (value) => String(value || "").trim();
 
@@ -101,6 +118,21 @@ function App() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [newLocationName, setNewLocationName] = useState("");
   const [locationToDelete, setLocationToDelete] = useState("");
+  const [newUserFullName, setNewUserFullName] = useState("");
+  const [newUserPhone, setNewUserPhone] = useState("");
+  const [editingPerson, setEditingPerson] = useState(null);
+  const [editUserFullName, setEditUserFullName] = useState("");
+  const [editUserPhone, setEditUserPhone] = useState("");
+  const [historyPerson, setHistoryPerson] = useState(null);
+  const [historyReports, setHistoryReports] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historySaving, setHistorySaving] = useState(false);
+  const [deletingReportId, setDeletingReportId] = useState(null);
+  const [draftReport, setDraftReport] = useState({
+    locationName: "",
+    status: DAILY_STATUS_OK,
+    occurredAt: "",
+  });
   const [downloadFromDate, setDownloadFromDate] = useState(todayString);
   const [downloadToDate, setDownloadToDate] = useState(todayString);
   const isReadOnly = selectedDate !== todayString;
@@ -183,9 +215,12 @@ function App() {
       );
   }, [locationFilter, people, searchTerm, statusFilter]);
 
-  const canLoadSelectedDate = Boolean(selectedDate) && !loading;
   const canDownloadSelectedDate = Boolean(selectedDate) && !loading && !actionLoading;
   const canAddLocation = !actionLoading;
+  const canAddUser =
+    !actionLoading &&
+    Boolean(String(newUserFullName).trim()) &&
+    Boolean(String(newUserPhone).trim());
   const canChooseLocationToDelete =
     deletableLocationOptions.length > 0 && !actionLoading;
   const canDeleteLocation =
@@ -264,6 +299,12 @@ function App() {
     await loadDashboard(dateValue);
   }
 
+  function handleEditPerson(person) {
+    setEditingPerson(person);
+    setEditUserFullName(String(person?.full_name || ""));
+    setEditUserPhone(String(person?.phone || ""));
+  }
+
   async function handleDownloadDayFile() {
     if (!selectedDate) {
       setError("יש לבחור תאריך להורדה");
@@ -323,50 +364,6 @@ function App() {
       triggerFileDownload(url, filename);
     } catch (err) {
       setError(getErrorMessage(err, "הורדת דוחות הטווח נכשלה"));
-    } finally {
-      setActionLoading(false);
-    }
-  }
-
-  async function handleQuickUpdate(personId, patch) {
-    if (isReadOnly) {
-      setError("עדכון דוחות זמין רק לתאריך של היום");
-      return;
-    }
-
-    const currentPerson = people.find((person) => person.person_id === personId);
-    if (!currentPerson) {
-      setError("לא נמצא משתמש לעדכון");
-      return;
-    }
-
-    const fallbackLocationName =
-      locations[0]?.name || currentPerson.location || locationOptions[0] || "";
-    const targetLocationName = patch.location || fallbackLocationName;
-    const targetLocationId = locationIdByName.get(targetLocationName);
-    if (!targetLocationId) {
-      setError("לא נמצא מיקום תקין עבור העדכון");
-      return;
-    }
-
-    const nextStatus = patch.daily_status || currentPerson.daily_status;
-    const isStatusOk = mapDailyStatusToReportStatus(nextStatus);
-    const payload = {
-      userId: Number(personId),
-      locationId: targetLocationId,
-      occurredAt: new Date().toISOString(),
-      source: "ui",
-      isStatusOk
-    };
-
-    setActionLoading(true);
-    setError("");
-
-    try {
-      await createReport(payload);
-      await loadDashboard(todayString);
-    } catch (err) {
-      setError(getErrorMessage(err, "יצירת הדוח נכשלה"));
     } finally {
       setActionLoading(false);
     }
@@ -433,18 +430,316 @@ function App() {
     }
   }
 
+  async function handleAddUser() {
+    const fullName = String(newUserFullName || "").trim();
+    const phone = String(newUserPhone || "").trim();
+
+    if (!fullName || !phone) {
+      setError("יש להזין שם מלא וטלפון לפני הוספת משתמש");
+      return;
+    }
+
+    setActionLoading(true);
+    setError("");
+
+    try {
+      await createUser({ fullName, phone });
+      setNewUserFullName("");
+      setNewUserPhone("");
+      await loadDashboard(selectedDate);
+    } catch (err) {
+      setError(getErrorMessage(err, "הוספת משתמש נכשלה"));
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleUpdateUser() {
+    const userId = Number(editingPerson?.person_id);
+    const fullName = String(editUserFullName || "").trim();
+    const phone = String(editUserPhone || "").trim();
+
+    if (!userId || !fullName || !phone) {
+      setError("יש לבחור משתמש ולהזין שם מלא וטלפון");
+      return;
+    }
+
+    setActionLoading(true);
+    setError("");
+
+    try {
+      await updateUser(userId, {
+        id: userId,
+        fullName,
+        phone,
+      });
+      setEditingPerson(null);
+      await loadDashboard(selectedDate);
+    } catch (err) {
+      setError(getErrorMessage(err, "עדכון משתמש נכשל"));
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleDeleteUser() {
+    const userId = Number(editingPerson?.person_id);
+    const fullName = String(editingPerson?.full_name || "");
+
+    if (!userId) {
+      return;
+    }
+
+    const approved = window.confirm(`למחוק את המשתמש "${fullName}"?`);
+    if (!approved) {
+      return;
+    }
+
+    setActionLoading(true);
+    setError("");
+
+    try {
+      await deleteUser(userId);
+      setEditingPerson(null);
+      await loadDashboard(selectedDate);
+    } catch (err) {
+      setError(getErrorMessage(err, "מחיקת משתמש נכשלה"));
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  function normalizeHistoryReports(rawReports) {
+    return rawReports
+      .slice()
+      .sort(
+        (left, right) =>
+          new Date(right?.occurredAt || 0).getTime() -
+          new Date(left?.occurredAt || 0).getTime()
+      )
+      .map((report) => ({
+        ...report,
+        createdAt: report.createdAt || report.occurredAt,
+        source: report.source || "ui",
+        isEditable: getReportLocalDate(report.occurredAt) === todayString,
+        locationName:
+          locationNameById.get(Number(report.locationId)) ||
+          String(report.locationId || ""),
+      }));
+  }
+
+  function resetDraftReport(defaultLocationName = "") {
+    setDraftReport({
+      locationName: defaultLocationName,
+      status: DAILY_STATUS_OK,
+      occurredAt: "",
+    });
+  }
+
+  async function loadHistoryReports(person) {
+    const userId = Number(person?.person_id);
+    if (!userId) {
+      return;
+    }
+
+    const reportsResponse = await fetchReports({ userId });
+    const safeReports = Array.isArray(reportsResponse) ? reportsResponse : [];
+    setHistoryReports(normalizeHistoryReports(safeReports));
+  }
+
+  async function handleOpenHistory(person) {
+    setHistoryPerson(person);
+    setHistoryReports([]);
+    setHistoryLoading(true);
+    setDeletingReportId(null);
+    setError("");
+    resetDraftReport(person?.location || locations[0]?.name || "");
+
+    try {
+      await loadHistoryReports(person);
+    } catch (err) {
+      setError(getErrorMessage(err, "טעינת היסטוריית המשתמש נכשלה"));
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  function handleDraftReportChange(key, value) {
+    if (key === "locationName" || key === "status" || key === "occurredAt") {
+      setDraftReport((current) => ({
+        ...current,
+        [key]: value,
+      }));
+      return;
+    }
+
+    if (!key.startsWith("report:")) {
+      return;
+    }
+
+    const [, reportId, field] = key.split(":");
+    setHistoryReports((current) =>
+      current.map((report) => {
+        if (String(report.id) !== String(reportId)) {
+          return report;
+        }
+
+        if (field === "locationName") {
+          return { ...report, locationName: value };
+        }
+
+        if (field === "status") {
+          return {
+            ...report,
+            isStatusOk: mapDailyStatusToReportStatus(value),
+          };
+        }
+
+        if (field === "occurredAt") {
+          return {
+            ...report,
+            occurredAt: value,
+          };
+        }
+
+        return report;
+      })
+    );
+  }
+
+  async function handleAddHistoryReport() {
+    const userId = Number(historyPerson?.person_id);
+    const locationId = locationIdByName.get(String(draftReport.locationName || "").trim());
+    const occurredAt = toUtcIsoFromLocalInput(draftReport.occurredAt);
+
+    if (!userId || !locationId || !occurredAt) {
+      setError("יש לבחור מיקום, סטטוס ותאריך תקינים לפני הוספת דיווח");
+      return;
+    }
+
+    setHistorySaving(true);
+    setError("");
+
+    try {
+      await createReport({
+        userId,
+        locationId,
+        isStatusOk: mapDailyStatusToReportStatus(draftReport.status),
+        occurredAt,
+        source: "ui",
+      });
+      await loadHistoryReports(historyPerson);
+      await loadDashboard(selectedDate);
+      resetDraftReport(historyPerson?.location || locations[0]?.name || "");
+    } catch (err) {
+      setError(getErrorMessage(err, "הוספת דיווח נכשלה"));
+    } finally {
+      setHistorySaving(false);
+    }
+  }
+
+  async function handleUpdateHistoryReport(reportId) {
+    const report = historyReports.find((item) => Number(item.id) === Number(reportId));
+    const locationId = locationIdByName.get(String(report?.locationName || "").trim());
+    const occurredAt = toUtcIsoFromLocalInput(report?.occurredAt || "");
+
+    if (!report || !locationId || !occurredAt) {
+      setError("יש לבחור מיקום ותאריך תקינים לפני שמירה");
+      return;
+    }
+
+    setHistorySaving(true);
+    setError("");
+
+    try {
+      await updateReport(Number(reportId), {
+        userId: Number(historyPerson?.person_id),
+        locationId,
+        isStatusOk: report.isStatusOk,
+        occurredAt,
+        source: report.source || "ui",
+      });
+      await loadHistoryReports(historyPerson);
+      await loadDashboard(selectedDate);
+    } catch (err) {
+      setError(getErrorMessage(err, "עדכון דיווח נכשל"));
+    } finally {
+      setHistorySaving(false);
+    }
+  }
+
+  async function handleDeleteHistoryReport(reportId) {
+    const approved = window.confirm("למחוק את הדיווח שנבחר?");
+    if (!approved) {
+      return;
+    }
+
+    setDeletingReportId(reportId);
+    setError("");
+
+    try {
+      await deleteReport(Number(reportId));
+      await loadHistoryReports(historyPerson);
+      await loadDashboard(selectedDate);
+    } catch (err) {
+      setError(getErrorMessage(err, "מחיקת דיווח נכשלה"));
+    } finally {
+      setDeletingReportId(null);
+    }
+  }
+
+  async function handleImportUsersFile(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    setActionLoading(true);
+    setError("");
+
+    try {
+      await importUsersFromExcel(file);
+      await loadDashboard(selectedDate);
+    } catch (err) {
+      setError(getErrorMessage(err, "ייבוא משתמשים מאקסל נכשל"));
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleImportLocationsFile(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    setActionLoading(true);
+    setError("");
+
+    try {
+      await importLocationsFromExcel(file);
+      await loadDashboard(selectedDate);
+    } catch (err) {
+      setError(getErrorMessage(err, "ייבוא מיקומים מאקסל נכשל"));
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
   return (
     <div className="app-shell" dir="rtl">
       <header className="header-card">
         <div>
           <h1>ניהול סטטוס יומי ומיקום</h1>
           <p className="muted-text">תצוגת משתמשים ודוחות לפי התאריך שנבחר</p>
-          <p className="muted-text auto-refresh-note">
-            ה-API החדש מבוסס על דוחות. פעולות Snapshot ישנות הושבתו זמנית.
-          </p>
         </div>
 
         <div className="header-actions">
+          
           <div className="date-controls">
             <label htmlFor="snapshot-date">בחירת תאריך</label>
             <input
@@ -478,6 +773,7 @@ function App() {
         emptyTable={filteredPeople.length === 0}
         actionLoading={actionLoading}
         canAddLocation={canAddLocation}
+        canAddUser={canAddUser}
         canChooseLocationToDelete={canChooseLocationToDelete}
         canDeleteLocation={canDeleteLocation}
         locationOptions={locationOptions}
@@ -486,11 +782,16 @@ function App() {
         downloadToDate={downloadToDate}
         filteredPeopleCount={filteredPeople.length}
         handleAddLocation={handleAddLocation}
+        handleAddUser={handleAddUser}
         handleDeleteLocation={handleDeleteLocation}
         handleDownloadRangeFiles={handleDownloadRangeFiles}
+        handleImportLocationsFile={handleImportLocationsFile}
+        handleImportUsersFile={handleImportUsersFile}
         locationFilter={locationFilter}
         locationToDelete={locationToDelete}
         newLocationName={newLocationName}
+        newUserFullName={newUserFullName}
+        newUserPhone={newUserPhone}
         onDownloadFromDateChange={(event) => setDownloadFromDate(event.target.value)}
         onDownloadToDateChange={(event) => setDownloadToDate(event.target.value)}
         onLocationFilterChange={(event) => setLocationFilter(event.target.value)}
@@ -498,6 +799,8 @@ function App() {
           setLocationToDelete(event.target.value)
         }
         onNewLocationNameChange={(event) => setNewLocationName(event.target.value)}
+        onNewUserFullNameChange={(event) => setNewUserFullName(event.target.value)}
+        onNewUserPhoneChange={(event) => setNewUserPhone(event.target.value)}
         onSearchTermChange={(event) => setSearchTerm(event.target.value)}
         onStatusFilterChange={(event) => setStatusFilter(event.target.value)}
         searchTerm={searchTerm}
@@ -507,17 +810,37 @@ function App() {
 
       {availableDates.length > 0 ? (
         <section className="dates-card">
-          <span className="muted-text">תאריכים זמינים:</span>
-          <div className="dates-list">
-            {availableDates.map((item) => (
+          <div className="date-controls">
+            <label htmlFor="snapshot-date">בחירת תאריך</label>
+            <input
+              id="snapshot-date"
+              data-testid="snapshot-date-input"
+              type="date"
+              value={selectedDate}
+              onChange={(event) => {
+                const nextDate = event.target.value;
+                setSelectedDate(nextDate);
+                void handleLoadSelectedDate(nextDate);
+              }}
+              max={todayString}
+              min={MIN_DATE}
+            />
+            <button
+              className="btn btn-primary"
+              onClick={handleDownloadDayFile}
+              disabled={!canDownloadSelectedDate}
+            >
+              הורד אקסל ליום
+            </button>
+            {isReadOnly ? (
               <button
-                key={item}
-                className={`btn btn-chip ${item === selectedDate ? "active-date" : ""}`}
-                onClick={() => void handleLoadSelectedDate(item)}
+                className="btn btn-secondary"
+                onClick={() => void handleLoadSelectedDate(todayString)}
+                disabled={actionLoading}
               >
-                {item}
+                חזור להיום
               </button>
-            ))}
+            ) : null}
           </div>
         </section>
       ) : null}
@@ -538,12 +861,55 @@ function App() {
         ) : (
           <PersonTable
             people={filteredPeople}
-            locationOptions={locationOptions}
             readOnly={isReadOnly || actionLoading}
-            onQuickUpdate={handleQuickUpdate}
+            onEdit={handleEditPerson}
+            onHistory={handleOpenHistory}
           />
         )}
       </main>
+
+      <UserEditModal
+        open={Boolean(editingPerson)}
+        loading={actionLoading}
+        user={editingPerson}
+        fullName={editUserFullName}
+        phone={editUserPhone}
+        onDelete={handleDeleteUser}
+        onClose={() => {
+          if (actionLoading) {
+            return;
+          }
+          setEditingPerson(null);
+        }}
+        onFullNameChange={(event) => setEditUserFullName(event.target.value)}
+        onPhoneChange={(event) => setEditUserPhone(event.target.value)}
+        onSubmit={handleUpdateUser}
+      />
+
+      <UserHistoryModal
+        open={Boolean(historyPerson)}
+        loading={historyLoading}
+        saving={historySaving}
+        deletingReportId={deletingReportId}
+        user={historyPerson}
+        reports={historyReports}
+        draftReport={draftReport}
+        locationOptions={locationOptions}
+        minDate={MIN_DATE}
+        readOnly={isReadOnly}
+        onClose={() => {
+          if (historyLoading || historySaving) {
+            return;
+          }
+          setHistoryPerson(null);
+          setHistoryReports([]);
+          resetDraftReport();
+        }}
+        onDraftChange={handleDraftReportChange}
+        onAddReport={handleAddHistoryReport}
+        onDeleteReport={handleDeleteHistoryReport}
+        onUpdateReport={handleUpdateHistoryReport}
+      />
     </div>
   );
 }

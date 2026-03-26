@@ -95,3 +95,12 @@ export const AddUsersFromExcelHandler =
 
     res.status(StatusCodes.CREATED).json(result);
   };
+
+export const deleteUserHandler =
+  (dal: UserDal) => async (req: Request, res: Response) => {
+    const { id } = entityWithIdValidator(req.params);
+
+    await dal.deleteUser(id);
+
+    res.sendStatus(StatusCodes.NO_CONTENT);
+  };
