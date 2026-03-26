@@ -1,4 +1,6 @@
-export const yes = () => "כן";
-export const no = () => "לא";
-export const ok = () => "תקין";
-export const notOk = () => "לא תקין";
+export const inputs = {
+    yes: "כן",
+    no: "לא",
+    ok: "תקין",
+    notOk: "לא תקין",
+}
