@@ -21,8 +21,8 @@ export const DBLocationReportSchema = PlainLocationReportSchema.extend({
 
 export const SearchQueryOptionsSchema = z
   .object({
-    userId: z.number(),
-    locationId: z.number(),
+    userId: z.coerce.number(),
+    locationId: z.coerce.number(),
     dailyStatus: z.boolean().nullable(),
     date: z.coerce.date(),
     minDate: z.coerce.date(),
