@@ -1,10 +1,13 @@
 import { apiRequest, buildApiUrl, buildQueryString, type DownloadInfo } from "./base";
 
 export type Report = {
+  id: number;
   userId: number;
   locationId: number;
   isStatusOk?: boolean | null;
   occurredAt: string;
+  createdAt?: string;
+  source?: "ui" | "bot";
 };
 
 export type ReportFilters = {
@@ -28,9 +31,20 @@ export const fetchReports = (filters: ReportFilters = {}) =>
   apiRequest<Report[]>(`/reports${buildQueryString(filters)}`);
 
 export const createReport = (payload: CreateReportPayload) =>
-  apiRequest("/reports", {
+  apiRequest<Report>("/reports", {
     method: "POST",
     data: payload,
+  });
+
+export const updateReport = (reportId: number, payload: Partial<CreateReportPayload>) =>
+  apiRequest<Report>(`/reports/${reportId}`, {
+    method: "PUT",
+    data: payload,
+  });
+
+export const deleteReport = (reportId: number) =>
+  apiRequest(`/reports/${reportId}`, {
+    method: "DELETE",
   });
 
 export const exportReports = (

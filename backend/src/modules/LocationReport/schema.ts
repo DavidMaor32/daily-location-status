@@ -10,8 +10,11 @@ export const PlainLocationReportSchema = z.object({
   locationId: z.number(),
   occurredAt: z.coerce.date(),
   isStatusOk: DailyStatusOkSchema,
+  notes: z.string().nullable(),
   source: ReportSourceSchema,
 });
+
+export const PartialLocationReportSchema = PlainLocationReportSchema.partial();
 
 export const DBLocationReportSchema = PlainLocationReportSchema.extend({
     id: z.number(),
@@ -20,8 +23,8 @@ export const DBLocationReportSchema = PlainLocationReportSchema.extend({
 
 export const SearchQueryOptionsSchema = z
   .object({
-    userId: z.number(),
-    locationId: z.number(),
+    userId: z.coerce.number(),
+    locationId: z.coerce.number(),
     dailyStatus: z.boolean().nullable(),
     date: z.coerce.date(),
     minDate: z.coerce.date(),

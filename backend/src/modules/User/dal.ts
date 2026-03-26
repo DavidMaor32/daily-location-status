@@ -1,11 +1,17 @@
 import { PrismaClient } from "@prisma/client";
 import { DBUser, PlainUser } from "./types";
-import { AlreadyExistsError, NotFoundError } from "../../utils/errors/client";
+import {
+  AlreadyExistsError,
+  NotFoundError,
+  ValidationError,
+} from "../../utils/errors/client";
 
 export class UserDal {
   private model;
+  private reportModel;
   constructor(prisma: PrismaClient) {
     this.model = prisma.user;
+    this.reportModel = prisma.locationReport;
   }
 
   getAllUsers = (): Promise<DBUser[]> => this.model.findMany();
@@ -48,5 +54,21 @@ export class UserDal {
       data: users,
       skipDuplicates: true,
     });
+  };
+
+  deleteUser = async (id: number): Promise<void> => {
+    await this.getUserById(id);
+
+    const relatedReportsCount = await this.reportModel.count({
+      where: { userId: id },
+    });
+
+    if (relatedReportsCount > 0) {
+      throw new ValidationError(
+        "לא ניתן למחוק משתמש שכבר קיים בדיווחים. מחק או ערוך קודם את הדיווחים המשויכים אליו."
+      );
+    }
+
+    await this.model.delete({ where: { id } });
   };
 }

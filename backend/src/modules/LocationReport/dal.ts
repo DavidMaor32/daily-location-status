@@ -1,5 +1,5 @@
 import { Prisma, PrismaClient } from "@prisma/client";
-import { DBLocationReport, PlainLocationReport } from "./types";
+import { DBLocationReport, PartialLocationReport, PlainLocationReport } from "./types";
 import { NotFoundError } from "../../utils/errors/client";
 import { SearchQueryOptions } from "./types";
 import moment from "moment";
@@ -70,7 +70,7 @@ export class LocationReportDal {
         row.occurredAt.toLocaleDateString('he-IL', { timeZone: 'Asia/Jerusalem' }),
         row.occurredAt.toLocaleTimeString('he-IL', { timeZone: 'Asia/Jerusalem' }),
         row.isStatusOk === true ? "תקין" : row.isStatusOk === false ? "לא תקין" : "לא הוזן",
-        // row.notes = there is no notes currently in this branch
+        row.notes,
         row.source,
       ];
     }));
@@ -92,7 +92,7 @@ export class LocationReportDal {
         { name: 'תאריך', filterButton: true },
         { name: 'שעה', filterButton: true },
         { name: 'סטטוס', filterButton: true },
-        // { name: 'הערות', filterButton: true }, = there is no notes currently in this branch
+        { name: 'הערות', filterButton: true },
         { name: 'מקור', filterButton: true },
       ],
       rows,
@@ -131,6 +131,28 @@ export class LocationReportDal {
     }
 
     return this.model.create({ data });
+  };
+
+  updateReport = async (
+    id: number,
+    data: PartialLocationReport
+  ): Promise<DBLocationReport> => {
+    const existingReport = await this.getReportById(id);
+    const nextUserId = data.userId ?? existingReport.userId;
+    const nextLocationId = data.locationId ?? existingReport.locationId;
+
+    await this.userDal.getUserById(nextUserId);
+    await this.locationDal.getLocationById(nextLocationId);
+
+    return this.model.update({
+      where: { id },
+      data,
+    });
+  };
+
+  deleteReport = async (id: number): Promise<void> => {
+    await this.getReportById(id);
+    await this.model.delete({ where: { id } });
   };
 
   getDailySummaryData = async (date: Date) => {

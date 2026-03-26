@@ -1,13 +1,19 @@
 import { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
+
 import moment from "moment";
 import * as fs from "fs";
 import * as path from "path";
+
 import { LocationReportDal } from "./dal";
 import { BackupService } from "../../services/backup";
-import { 
-  plainLocationReportValidator, 
-  searchQueryOptionsValidator 
+
+import { entityWithIdValidator } from "../../utils/validations";
+
+import {
+  partialLocationReportValidator,
+  plainLocationReportValidator,
+  searchQueryOptionsValidator,
 } from "./types";
 import { entityWithIdValidator } from "../../utils/validations";
 
@@ -99,4 +105,23 @@ export const addReportHandler =
     const data = plainLocationReportValidator(req.body);
     const report = await dal.addReport(data);
     res.status(StatusCodes.CREATED).json(report);
+  };
+
+export const updateReportHandler =
+  (dal: LocationReportDal) => async (req: Request, res: Response) => {
+    const { id } = entityWithIdValidator(req.params);
+    const data = partialLocationReportValidator(req.body);
+
+    const report = await dal.updateReport(id, data);
+
+    res.status(StatusCodes.OK).json(report);
+  };
+
+export const deleteReportHandler =
+  (dal: LocationReportDal) => async (req: Request, res: Response) => {
+    const { id } = entityWithIdValidator(req.params);
+
+    await dal.deleteReport(id);
+
+    res.sendStatus(StatusCodes.NO_CONTENT);
   };

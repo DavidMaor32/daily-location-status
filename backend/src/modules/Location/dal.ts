@@ -1,11 +1,17 @@
 import { PrismaClient } from "@prisma/client";
 import { DBLocation, PlainLocation } from "./types";
-import { NotFoundError, AlreadyExistsError } from "../../utils/errors/client";
+import {
+  NotFoundError,
+  AlreadyExistsError,
+  ValidationError,
+} from "../../utils/errors/client";
 
 export class LocationDal {
   private model;
+  private reportModel;
   constructor(prisma: PrismaClient) {
     this.model = prisma.location;
+    this.reportModel = prisma.locationReport;
   }
 
   getAllLocations = (): Promise<DBLocation[]> => this.model.findMany();
@@ -44,6 +50,16 @@ export class LocationDal {
 
     if (!existing) {
       throw new NotFoundError("Location", id.toString());
+    }
+
+    const relatedReportsCount = await this.reportModel.count({
+      where: { locationId: id },
+    });
+
+    if (relatedReportsCount > 0) {
+      throw new ValidationError(
+        "לא ניתן למחוק מיקום שכבר קיים בדיווחים. מחק או ערוך קודם את הדיווחים המשויכים אליו."
+      );
     }
 
     await this.model.delete({ where: { id } });

@@ -35,6 +35,12 @@
   flex-wrap: wrap;
 }
 
+.people-table td:last-child,
+.people-table th:last-child {
+  white-space: nowrap;
+  width: 1%;
+}
+
 .empty-row {
   text-align: center !important;
   color: var(--muted);

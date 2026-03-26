@@ -1,21 +1,16 @@
 // Main users table with quick report actions for the selected date.
 import PersonTableRow, { type PersonRow } from "./PersonTableRow";
 
-export type QuickUpdatePatch = {
-  location?: string;
-  daily_status?: string;
-};
-
 type PersonTableProps = {
   people: PersonRow[];
-  locationOptions: string[];
   readOnly: boolean;
-  onQuickUpdate: (personId: string, patch: QuickUpdatePatch) => void;
+  onHistory: (person: PersonRow) => void;
+  onEdit: (person: PersonRow) => void;
 };
 
 // Render the main users table with quick actions for location/status updates.
 const PersonTable = (props: PersonTableProps) => {
-  const { people, locationOptions, readOnly, onQuickUpdate } = props;
+  const { people, readOnly, onEdit, onHistory } = props;
 
   return (
     <div className="table-wrapper">
@@ -27,12 +22,13 @@ const PersonTable = (props: PersonTableProps) => {
             <th>סטטוס יומי</th>
             <th>טלפון</th>
             <th>עודכן אחרונה</th>
+            <th>פעולות</th>
           </tr>
         </thead>
         <tbody>
           {people.length === 0 ? (
             <tr>
-              <td colSpan={5} className="empty-row">
+              <td colSpan={6} className="empty-row">
                 לא נמצאו נתונים להצגה
               </td>
             </tr>
@@ -41,9 +37,9 @@ const PersonTable = (props: PersonTableProps) => {
               <PersonTableRow
                 key={person.person_id}
                 person={person}
-                locationOptions={locationOptions}
                 readOnly={readOnly}
-                onQuickUpdate={onQuickUpdate}
+                onEdit={onEdit}
+                onHistory={onHistory}
               />
             ))
           )}

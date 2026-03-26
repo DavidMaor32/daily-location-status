@@ -1,4 +1,4 @@
-import { apiRequest } from "./base";
+import { apiRequest, uploadFile } from "./base";
 
 export type Location = {
   id: number;
@@ -20,3 +20,6 @@ export const deleteLocation = (locationId: number) =>
   apiRequest(`/locations/${locationId}`, {
     method: "DELETE",
   });
+
+export const importLocationsFromExcel = (file: File) =>
+  uploadFile("/locations/excel", file);

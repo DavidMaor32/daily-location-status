@@ -12,10 +12,12 @@ export const createLocationReportRouter = (
   const reportHandlers = createDecoratedLocationReportHandlers(dal);
 
   // Standard & Export Routes
-  router.get("/", reportHandlers.getReportsHandler);
-  router.get("/export", reportHandlers.exportReportsHandler);
-  router.get("/:id", reportHandlers.getReportByIdHandler);
-  router.post("/", reportHandlers.addReportHandler);
+router.get("/", reportHandlers.getReportsHandler);
+router.get("/export", reportHandlers.exportReportsHandler);
+router.get("/:id", reportHandlers.getReportByIdHandler);
+router.post("/", reportHandlers.addReportHandler);
+router.put("/:id", reportHandlers.updateReportHandler);
+router.delete("/:id", reportHandlers.deleteReportHandler);
 
   // Backup Routes (Conditional based on backupService)
   if (backupService) {
@@ -29,15 +31,46 @@ export const createLocationReportRouter = (
   return router;
 };
 
-export const createDecoratedLocationReportHandlers = (dal: LocationReportDal) => ({
-  getReportsHandler: httpLogger(handlers.getReportsHandler(dal), "getReportsHandler"),
-  exportReportsHandler: httpLogger(handlers.exportReportsHandler(dal), "exportReportsHandler"),
-  getReportByIdHandler: httpLogger(handlers.getReportByIdHandler(dal), "getReportByIdHandler"),
-  addReportHandler: httpLogger(handlers.addReportHandler(dal), "addReportHandler"),
+export const createDecoratedLocationReportHandlers = (
+  dal: LocationReportDal
+) => ({
+  getReportsHandler: httpLogger(
+    handlers.getReportsHandler(dal),
+    "getReportsHandler"
+  ),
+  getReportByIdHandler: httpLogger(
+    handlers.getReportByIdHandler(dal),
+    "getReportByIdHandler"
+  ),
+  exportReportsHandler: httpLogger(
+    handlers.exportReportsHandler(dal),
+    "exportReportsHandler"
+  ),
+  addReportHandler: httpLogger(
+    handlers.addReportHandler(dal),
+    "addReportHandler"
+  ),
+  updateReportHandler: httpLogger(
+    handlers.updateReportHandler(dal),
+    "updateReportHandler"
+  ),
+  deleteReportHandler: httpLogger(
+    handlers.deleteReportHandler(dal),
+    "deleteReportHandler"
+  ),
 });
 
 export const createDecoratedBackupHandlers = (backupService: BackupService) => ({
-  manualBackupHandler: httpLogger(handlers.manualBackupHandler(backupService), "manualBackupHandler"),
-  getBackupListHandler: httpLogger(handlers.getBackupListHandler(), "getBackupListHandler"),
-  downloadBackupHandler: httpLogger(handlers.downloadBackupHandler(), "downloadBackupHandler"),
+  manualBackupHandler: httpLogger(
+    handlers.manualBackupHandler(backupService),
+    "manualBackupHandler"
+  ),
+  getBackupListHandler: httpLogger(
+    handlers.getBackupListHandler(),
+    "getBackupListHandler"
+  ),
+  downloadBackupHandler: httpLogger(
+    handlers.downloadBackupHandler(),
+    "downloadBackupHandler"
+  ),
 });
