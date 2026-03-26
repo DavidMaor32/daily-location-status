@@ -1,12 +1,13 @@
-import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { defineConfig } from "vite";
 
-const frontendDevProxyTarget = String(process.env.FRONTEND_DEV_PROXY_TARGET || "http://localhost:8000");
+const frontendDevProxyTarget = String(
+  process.env.FRONTEND_DEV_PROXY_TARGET || "http://localhost:8000"
+);
 
 export default defineConfig({
   plugins: [react()],
-  define: {
-  },
+  define: {},
   server: {
     proxy: {
       "/api": {

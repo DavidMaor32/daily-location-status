@@ -7,7 +7,9 @@ import logger from "../utils/logger";
 
 export class BackupService {
   private interval?: NodeJS.Timeout;
-  private readonly backupDir = "/app/backups";
+  private readonly backupDir =
+    process.env.BACKUP_DIR?.trim() ||
+    path.join(process.cwd(), "backups");
   private readonly intervalMs = 3600000;
   private isRunning = false;
 

@@ -1,98 +1,37 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { createLocation, deleteLocation, fetchLocations } from "./api/locations.ts";
+import { createLocation, deleteLocation, fetchLocations } from "../api/locations";
 import {
   createReport,
   exportReports,
   fetchReports,
-} from "./api/reports.ts";
-import { getTodayString } from "./api/helpers.ts";
-import { fetchUsers } from "./api/users.ts";
-import AppToolbar from "./components/AppToolbar";
-import PersonTable from "./components/PersonTable";
+} from "../api/reports";
+import type { Location } from "../api/locations";
+import type { Report } from "../api/reports";
+import type { User } from "../api/users";
+import { getTodayString } from "../api/helpers";
+import { addUser, addUsersFromExcel, fetchUsers } from "../api/users";
 import {
   DEFAULT_LOCATION_OPTIONS,
   uniqueLocations,
-} from "./constants/locations.ts";
+} from "../constants/locations";
+import type { PersonRow, QuickUpdatePatch } from "../types/personTable";
+import { buildAvailableDates, normalizeLocationName } from "../utils/reportDates";
 import {
-  DAILY_STATUS_BAD,
-  DAILY_STATUS_MISSING,
-  DAILY_STATUS_OK,
-} from "./constants/statuses.ts";
-import { getErrorMessage } from "./utils/errors.ts";
+  getLatestReportForUser,
+  mapDailyStatusToReportStatus,
+  mapReportStatusToDailyStatus,
+} from "../utils/reportMapping";
+import { triggerFileDownload } from "../utils/triggerFileDownload";
+import { getErrorMessage } from "../utils/errors";
 
-const REPORTS_UNAVAILABLE_MESSAGE = "לא קיימים דוחות לתאריך שנבחר.";
-
-const normalizeLocationName = (value) => String(value || "").trim();
-
-const getReportLocalDate = (value) => {
-  if (!value) {
-    return "";
-  }
-
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return String(value).slice(0, 10);
-  }
-
-  const year = String(parsed.getFullYear());
-  const month = String(parsed.getMonth() + 1).padStart(2, "0");
-  const day = String(parsed.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-};
-
-const getLatestReportForUser = (reports, userId) =>
-  reports
-    .filter((report) => Number(report?.userId) === Number(userId))
-    .sort(
-      (left, right) =>
-        new Date(right?.occurredAt || 0).getTime() -
-        new Date(left?.occurredAt || 0).getTime()
-    )[0];
-
-const mapReportStatusToDailyStatus = (isStatusOk) => {
-  if (isStatusOk === true) {
-    return DAILY_STATUS_OK;
-  }
-
-  if (isStatusOk === false) {
-    return DAILY_STATUS_BAD;
-  }
-
-  return DAILY_STATUS_MISSING;
-};
-
-const mapDailyStatusToReportStatus = (dailyStatus) => {
-  if (dailyStatus === DAILY_STATUS_OK) {
-    return true;
-  }
-
-  if (dailyStatus === DAILY_STATUS_BAD) {
-    return false;
-  }
-
-  return null;
-};
-
-const buildAvailableDates = (reports, todayString, selectedDate) => {
-  const allDates = Array.isArray(reports)
-    ? reports
-        .map((report) => getReportLocalDate(report?.occurredAt))
-        .filter(Boolean)
-    : [];
-
-  return Array.from(new Set([todayString, selectedDate, ...allDates]))
-    .filter(Boolean)
-    .sort((left, right) => right.localeCompare(left));
-};
-
-function App() {
+export function useDashboard() {
   const todayString = getTodayString();
-  const [users, setUsers] = useState([]);
-  const [reports, setReports] = useState([]);
-  const [locations, setLocations] = useState([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [reports, setReports] = useState<Report[]>([]);
+  const [locations, setLocations] = useState<Location[]>([]);
   const [selectedDate, setSelectedDate] = useState(todayString);
-  const [availableDates, setAvailableDates] = useState([todayString]);
+  const [availableDates, setAvailableDates] = useState<string[]>([todayString]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState("");
@@ -105,6 +44,7 @@ function App() {
   const [downloadToDate, setDownloadToDate] = useState(todayString);
   const isReadOnly = selectedDate !== todayString;
   const homeLocation = DEFAULT_LOCATION_OPTIONS[0];
+
   const locationOptions = useMemo(() => {
     const apiLocationNames = locations.map((location) => location.name);
     const fallbackLocations =
@@ -126,7 +66,10 @@ function App() {
   const locationNameById = useMemo(
     () =>
       new Map(
-        locations.map((location) => [Number(location.id), String(location.name || "")])
+        locations.map((location) => [
+          Number(location.id),
+          String(location.name || ""),
+        ])
       ),
     [locations]
   );
@@ -136,7 +79,7 @@ function App() {
     [locationOptions, homeLocation]
   );
 
-  const people = useMemo(() => {
+  const people = useMemo((): PersonRow[] => {
     return users.map((user) => {
       const latestReport = getLatestReportForUser(reports, user.id);
       const location =
@@ -184,12 +127,15 @@ function App() {
   }, [locationFilter, people, searchTerm, statusFilter]);
 
   const canLoadSelectedDate = Boolean(selectedDate) && !loading;
-  const canDownloadSelectedDate = Boolean(selectedDate) && !loading && !actionLoading;
+  const canDownloadSelectedDate =
+    Boolean(selectedDate) && !loading && !actionLoading;
   const canAddLocation = !actionLoading;
   const canChooseLocationToDelete =
     deletableLocationOptions.length > 0 && !actionLoading;
   const canDeleteLocation =
-    !actionLoading && deletableLocationOptions.length > 0 && Boolean(locationToDelete);
+    !actionLoading &&
+    deletableLocationOptions.length > 0 &&
+    Boolean(locationToDelete);
 
   useEffect(() => {
     void loadDashboard(todayString);
@@ -207,22 +153,30 @@ function App() {
     }
   }, [deletableLocationOptions, locationToDelete]);
 
-  async function loadDashboard(dateValue) {
+  async function loadDashboard(dateValue: string) {
     setLoading(true);
     setError("");
 
     try {
-      const [usersResponse, locationsResponse, allReportsResponse, dateReportsResponse] =
-        await Promise.all([
-          fetchUsers(),
-          fetchLocations(),
-          fetchReports(),
-          fetchReports({ date: dateValue }),
-        ]);
+      const [
+        usersResponse,
+        locationsResponse,
+        allReportsResponse,
+        dateReportsResponse,
+      ] = await Promise.all([
+        fetchUsers(),
+        fetchLocations(),
+        fetchReports(),
+        fetchReports({ date: dateValue }),
+      ]);
 
       const safeUsers = Array.isArray(usersResponse) ? usersResponse : [];
-      const safeLocations = Array.isArray(locationsResponse) ? locationsResponse : [];
-      const safeAllReports = Array.isArray(allReportsResponse) ? allReportsResponse : [];
+      const safeLocations = Array.isArray(locationsResponse)
+        ? locationsResponse
+        : [];
+      const safeAllReports = Array.isArray(allReportsResponse)
+        ? allReportsResponse
+        : [];
       const safeDateReports = Array.isArray(dateReportsResponse)
         ? dateReportsResponse
         : [];
@@ -243,19 +197,7 @@ function App() {
     }
   }
 
-  function triggerFileDownload(url, filename) {
-    const link = document.createElement("a");
-    link.href = url;
-    if (filename) {
-      link.download = filename;
-    }
-    link.rel = "noopener";
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-  }
-
-  async function handleLoadSelectedDate(dateValue) {
+  async function handleLoadSelectedDate(dateValue: string) {
     if (!dateValue) {
       setError("יש לבחור תאריך לטעינה");
       return;
@@ -316,7 +258,7 @@ function App() {
     }
   }
 
-  async function handleQuickUpdate(personId, patch) {
+  async function handleQuickUpdate(personId: string, patch: QuickUpdatePatch) {
     if (isReadOnly) {
       setError("עדכון דוחות זמין רק לתאריך של היום");
       return;
@@ -343,8 +285,8 @@ function App() {
       userId: Number(personId),
       locationId: targetLocationId,
       occurredAt: new Date().toISOString(),
-      source: "ui",
-      isStatusOk
+      source: "ui" as const,
+      isStatusOk,
     };
 
     setActionLoading(true);
@@ -386,6 +328,48 @@ function App() {
     }
   }
 
+  async function handleAddUser(payload: {
+    fullName: string;
+    phone: string;
+  }): Promise<boolean> {
+    const fullName = payload.fullName.trim();
+    const phone = payload.phone.trim();
+    if (!fullName || !phone) {
+      setError("יש למלא שם מלא וטלפון");
+      return false;
+    }
+
+    setActionLoading(true);
+    setError("");
+
+    try {
+      await addUser({ fullName, phone });
+      await loadDashboard(selectedDate);
+      return true;
+    } catch (err) {
+      setError(getErrorMessage(err, "הוספת משתמש נכשלה"));
+      return false;
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleUsersExcelImport(file: File): Promise<boolean> {
+    setActionLoading(true);
+    setError("");
+
+    try {
+      await addUsersFromExcel(file);
+      await loadDashboard(selectedDate);
+      return true;
+    } catch (err) {
+      setError(getErrorMessage(err, "ייבוא משתמשים מאקסל נכשל"));
+      return false;
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
   async function handleDeleteLocation() {
     const normalized = normalizeLocationName(locationToDelete);
     if (!normalized) {
@@ -421,118 +405,44 @@ function App() {
     }
   }
 
-  return (
-    <div className="app-shell" dir="rtl">
-      <header className="header-card">
-        <div>
-          <h1>ניהול סטטוס יומי ומיקום</h1>
-          <p className="muted-text">תצוגת משתמשים ודוחות לפי התאריך שנבחר</p>
-          <p className="muted-text auto-refresh-note">
-            ה-API החדש מבוסס על דוחות. פעולות Snapshot ישנות הושבתו זמנית.
-          </p>
-        </div>
-
-        <div className="header-actions">
-          <div className="date-controls">
-            <label htmlFor="snapshot-date">בחירת תאריך</label>
-            <input
-              id="snapshot-date"
-              data-testid="snapshot-date-input"
-              type="date"
-              value={selectedDate}
-              onChange={(event) => setSelectedDate(event.target.value)}
-              max={todayString}
-            />
-            <button
-              className="btn btn-primary"
-              data-testid="load-date-button"
-              onClick={() => handleLoadSelectedDate(selectedDate)}
-              disabled={!canLoadSelectedDate}
-            >
-              טען תאריך
-            </button>
-            <button
-              className="btn btn-primary"
-              onClick={handleDownloadDayFile}
-              disabled={!canDownloadSelectedDate}
-            >
-              הורד אקסל ליום
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <AppToolbar
-        actionLoading={actionLoading}
-        canAddLocation={canAddLocation}
-        canChooseLocationToDelete={canChooseLocationToDelete}
-        canDeleteLocation={canDeleteLocation}
-        locationOptions={locationOptions}
-        deletableLocationOptions={deletableLocationOptions}
-        downloadFromDate={downloadFromDate}
-        downloadToDate={downloadToDate}
-        filteredPeopleCount={filteredPeople.length}
-        handleAddLocation={handleAddLocation}
-        handleDeleteLocation={handleDeleteLocation}
-        handleDownloadRangeFiles={handleDownloadRangeFiles}
-        locationFilter={locationFilter}
-        locationToDelete={locationToDelete}
-        newLocationName={newLocationName}
-        onDownloadFromDateChange={(event) => setDownloadFromDate(event.target.value)}
-        onDownloadToDateChange={(event) => setDownloadToDate(event.target.value)}
-        onLocationFilterChange={(event) => setLocationFilter(event.target.value)}
-        onLocationToDeleteChange={(event) =>
-          setLocationToDelete(event.target.value)
-        }
-        onNewLocationNameChange={(event) => setNewLocationName(event.target.value)}
-        onSearchTermChange={(event) => setSearchTerm(event.target.value)}
-        onStatusFilterChange={(event) => setStatusFilter(event.target.value)}
-        searchTerm={searchTerm}
-        statusFilter={statusFilter}
-        todayString={todayString}
-      />
-
-      {availableDates.length > 0 ? (
-        <section className="dates-card">
-          <span className="muted-text">תאריכים זמינים:</span>
-          <div className="dates-list">
-            {availableDates.map((item) => (
-              <button
-                key={item}
-                className={`btn btn-chip ${item === selectedDate ? "active-date" : ""}`}
-                onClick={() => void handleLoadSelectedDate(item)}
-              >
-                {item}
-              </button>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      {isReadOnly ? (
-        <div className="history-banner">
-          מצב תצוגת היסטוריה: מוצגים דוחות כפי שנמצאו עבור התאריך {selectedDate}
-        </div>
-      ) : null}
-
-      {error ? <div className="error-banner">{error}</div> : null}
-
-      <main className="content-area">
-        {loading ? (
-          <div className="loading-box">טוען נתונים...</div>
-        ) : filteredPeople.length === 0 && selectedDate !== todayString ? (
-          <div className="loading-box">{REPORTS_UNAVAILABLE_MESSAGE}</div>
-        ) : (
-          <PersonTable
-            people={filteredPeople}
-            locationOptions={locationOptions}
-            readOnly={isReadOnly || actionLoading}
-            onQuickUpdate={handleQuickUpdate}
-          />
-        )}
-      </main>
-    </div>
-  );
+  return {
+    todayString,
+    selectedDate,
+    setSelectedDate,
+    availableDates,
+    loading,
+    actionLoading,
+    error,
+    searchTerm,
+    setSearchTerm,
+    locationFilter,
+    setLocationFilter,
+    statusFilter,
+    setStatusFilter,
+    newLocationName,
+    setNewLocationName,
+    locationToDelete,
+    setLocationToDelete,
+    downloadFromDate,
+    setDownloadFromDate,
+    downloadToDate,
+    setDownloadToDate,
+    isReadOnly,
+    locationOptions,
+    deletableLocationOptions,
+    filteredPeople,
+    canLoadSelectedDate,
+    canDownloadSelectedDate,
+    canAddLocation,
+    canChooseLocationToDelete,
+    canDeleteLocation,
+    handleLoadSelectedDate,
+    handleDownloadDayFile,
+    handleDownloadRangeFiles,
+    handleQuickUpdate,
+    handleAddLocation,
+    handleDeleteLocation,
+    handleAddUser,
+    handleUsersExcelImport,
+  };
 }
-
-export default App;

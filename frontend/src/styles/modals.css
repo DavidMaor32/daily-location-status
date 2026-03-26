@@ -1,7 +1,7 @@
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(11, 37, 53, 0.45);
+  background: var(--modal-backdrop);
   display: grid;
   place-items: center;
   padding: 16px;
@@ -10,10 +10,11 @@
 
 .modal {
   width: min(500px, 100%);
-  background: #fff;
+  background: var(--modal-bg);
   border-radius: 14px;
   border: 1px solid var(--border);
   padding: 16px;
+  color: var(--text-primary);
 }
 
 .modal h3 {
@@ -38,9 +39,9 @@
 }
 
 .tracking-warning {
-  border: 1px solid #f2cf8a;
-  background: #fff5df;
-  color: #7a4a00;
+  border: 1px solid var(--tracking-warning-border);
+  background: var(--tracking-warning-bg);
+  color: var(--tracking-warning-text);
   border-radius: 10px;
   padding: 8px 10px;
   font-size: 0.88rem;
@@ -61,15 +62,15 @@
 .tracking-event-row {
   display: grid;
   gap: 8px;
-  border: 1px solid #dbe7f0;
+  border: 1px solid var(--tracking-event-border);
   border-radius: 10px;
-  background: #f7fbff;
+  background: var(--tracking-event-bg);
   padding: 8px 10px;
 }
 
 .voided-event {
   opacity: 0.8;
-  background: #f4f6f8;
+  background: var(--voided-event-bg);
 }
 
 .tracking-event-meta {
@@ -83,7 +84,7 @@
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
-  color: #526b7a;
+  color: var(--tracking-details-text);
 }
 
 .tracking-actions {
@@ -100,9 +101,9 @@
 .tracking-transition-row {
   display: grid;
   gap: 4px;
-  border: 1px solid #dbe7f0;
+  border: 1px solid var(--tracking-event-border);
   border-radius: 10px;
-  background: #f5fbf6;
+  background: var(--tracking-transition-bg);
   padding: 8px 10px;
 }
 

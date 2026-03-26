@@ -1,0 +1,154 @@
+/* CSS variables + chip classes used by location/status chips (MUI table cells). */
+:root {
+  color-scheme: light;
+  --text-primary: #14323f;
+  --muted: #4d6270;
+  --chip-custom-bg: #e8edf2;
+  --chip-custom-text: #2d4f63;
+  --neutral-chip-bg: #d9e4ee;
+  --neutral-chip-text: #24465b;
+  --warning-chip-bg: #ffe8c4;
+  --warning-chip-text: #7a4a00;
+  --home-bg: #d9f1ff;
+  --home-text: #0f4f7a;
+  --location-1-bg: #ffe9d2;
+  --location-1-text: #7f4500;
+  --location-2-bg: #ece1ff;
+  --location-2-text: #5b2a92;
+  --location-3-bg: #d6f2eb;
+  --location-3-text: #0f5c49;
+  --location-4-bg: #ffe5ef;
+  --location-4-text: #8f1b55;
+  --location-5-bg: #fff4cf;
+  --location-5-text: #6e5300;
+  --ok-bg: #daf5df;
+  --ok-text: #1f6d30;
+  --bad-bg: #f8d7d9;
+  --bad-text: #8a1f2a;
+  --missing-bg: #fff4c7;
+  --missing-text: #6f5600;
+  --border: #c9d9e4;
+  --modal-backdrop: rgba(11, 37, 53, 0.45);
+  --modal-bg: #ffffff;
+  --tracking-warning-border: #f2cf8a;
+  --tracking-warning-bg: #fff5df;
+  --tracking-warning-text: #7a4a00;
+  --tracking-event-border: #dbe7f0;
+  --tracking-event-bg: #f7fbff;
+  --voided-event-bg: #f4f6f8;
+  --tracking-details-text: #526b7a;
+  --tracking-transition-bg: #f5fbf6;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --text-primary: #e6edf3;
+  --muted: #8b9cad;
+  --chip-custom-bg: #21262d;
+  --chip-custom-text: #adbac7;
+  --neutral-chip-bg: #30363d;
+  --neutral-chip-text: #adbac7;
+  --warning-chip-bg: #3d2c00;
+  --warning-chip-text: #eac54f;
+  --home-bg: #1a3a52;
+  --home-text: #8bd1ff;
+  --location-1-bg: #4a3010;
+  --location-1-text: #ffc078;
+  --location-2-bg: #3d2a5c;
+  --location-2-text: #d4b8ff;
+  --location-3-bg: #0f3d32;
+  --location-3-text: #6ee7c5;
+  --location-4-bg: #4a1a30;
+  --location-4-text: #ffa6c8;
+  --location-5-bg: #4a3d10;
+  --location-5-text: #f5e6a3;
+  --ok-bg: #0d2818;
+  --ok-text: #56d364;
+  --bad-bg: #3d1518;
+  --bad-text: #ff7b72;
+  --missing-bg: #3d3510;
+  --missing-text: #f0c14a;
+  --border: #30363d;
+  --modal-backdrop: rgba(0, 0, 0, 0.72);
+  --modal-bg: #161b22;
+  --tracking-warning-border: #9e6a03;
+  --tracking-warning-bg: #2d2a1a;
+  --tracking-warning-text: #eac54f;
+  --tracking-event-border: #30363d;
+  --tracking-event-bg: #0d1117;
+  --voided-event-bg: #21262d;
+  --tracking-details-text: #8b9cad;
+  --tracking-transition-bg: #0d2818;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.status-chip {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.chip-home {
+  background: var(--home-bg);
+  color: var(--home-text);
+}
+
+.chip-location-1 {
+  background: var(--location-1-bg);
+  color: var(--location-1-text);
+}
+
+.chip-location-2 {
+  background: var(--location-2-bg);
+  color: var(--location-2-text);
+}
+
+.chip-location-3 {
+  background: var(--location-3-bg);
+  color: var(--location-3-text);
+}
+
+.chip-location-4 {
+  background: var(--location-4-bg);
+  color: var(--location-4-text);
+}
+
+.chip-location-5 {
+  background: var(--location-5-bg);
+  color: var(--location-5-text);
+}
+
+.chip-custom-location {
+  background: var(--chip-custom-bg);
+  color: var(--chip-custom-text);
+}
+
+.chip-status-ok {
+  background: var(--ok-bg);
+  color: var(--ok-text);
+}
+
+.chip-status-bad {
+  background: var(--bad-bg);
+  color: var(--bad-text);
+}
+
+.chip-status-missing {
+  background: var(--missing-bg);
+  color: var(--missing-text);
+}
+
+.neutral-chip {
+  background: var(--neutral-chip-bg);
+  color: var(--neutral-chip-text);
+}
+
+.warning-chip {
+  background: var(--warning-chip-bg);
+  color: var(--warning-chip-text);
+}

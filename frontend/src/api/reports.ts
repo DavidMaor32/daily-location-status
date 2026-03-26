@@ -19,7 +19,7 @@ export type ReportFilters = {
 export type CreateReportPayload = {
   userId: number;
   locationId: number;
-  isStatusOk?: boolean;
+  isStatusOk?: boolean | null;
   occurredAt: string;
   source: "ui" | "bot";
 };

@@ -20,3 +20,9 @@ export const deleteLocation = (locationId: number) =>
   apiRequest(`/locations/${locationId}`, {
     method: "DELETE",
   });
+
+export const addLocationsFromExcel = (file: File) =>
+  apiRequest(`/locations/excel`, {
+    method: "POST",
+    data: file,
+  });
