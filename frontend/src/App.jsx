@@ -394,7 +394,7 @@ function App() {
     if (!canAddLocation) return;
     setActionLoading(true);
     try {
-      await createLocation({ name: newLocationName });
+      await createLocation(newLocationName);
       setNewLocationName("");
       await loadDashboard(selectedDate);
     } catch (err) {
