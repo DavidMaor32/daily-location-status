@@ -463,7 +463,14 @@ function App() {
       setNewUserPhone("");
       await loadDashboard(selectedDate);
     } catch (err) {
-      setError(getErrorMessage(err, "הוספת משתמש נכשלה"));
+      const message = getErrorMessage(err, "הוספת משתמש נכשלה");
+      if (message.includes("already exists")) {
+        setError("מספר הטלפון כבר קיים במערכת");
+      } else if (message.includes("invalid_format")) {
+        setError("מספר הטלפון אינו תקין");
+      } else {
+        setError(message);
+      }
     } finally {
       setActionLoading(false);
     }
