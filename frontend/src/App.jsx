@@ -404,7 +404,12 @@ function App() {
       setNewLocationName("");
       await loadDashboard(selectedDate);
     } catch (err) {
-      setError("הוספת מיקום נכשלה");
+      const message = String(err?.message || "");
+      if (message.toLowerCase().includes("already exists")) {
+        setError("המיקום הזה כבר קיים במערכת.");
+      } else {
+        setError("הוספת מיקום נכשלה");
+      }
     } finally {
       setActionLoading(false);
     }
